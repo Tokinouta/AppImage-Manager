@@ -66,6 +66,20 @@ Hinnant's `days_from_civil` algorithm. Tests cover boundary years
   sit on disk until `--purge` is used in the same invocation, or
   until the user `rm -rf`s them manually.
 
+## What works in slice 5
+
+- `aim run <id> [-- <args...>]` — launches the cached AppImage,
+  forwarding everything after `--` to it. The CLI uses Unix
+  `exec()` so the current process *becomes* the AppImage: signals
+  (Ctrl-C, SIGTERM) propagate naturally, the exit code of the
+  child is preserved bit-for-bit.
+- Library API: `aim::run::run(target, args, layout) -> i32` does
+  `fork + wait` instead of `exec`, returning the exit code so unit
+  tests don't replace themselves.
+- Lookup miss: `aim::error::not_installed`. Cache file vanished
+  under the state record: `aim::error::invalid_target` (with a
+  message pointing at the missing path).
+
 ## Storage layout
 
 ```

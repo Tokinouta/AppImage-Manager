@@ -15,6 +15,7 @@ pub mod integrate;
 pub mod output;
 pub mod paths;
 pub mod remove;
+pub mod run;
 pub mod show;
 pub mod staging;
 pub mod state;

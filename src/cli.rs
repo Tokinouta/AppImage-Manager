@@ -14,6 +14,7 @@ use crate::install::{self, InstallRequest};
 use crate::integrate;
 use crate::paths::Layout;
 use crate::remove;
+use crate::run;
 use crate::show::{self, InfoOpts, ListOpts};
 use crate::state::Source;
 
@@ -168,7 +169,7 @@ pub fn run(cli: Cli) -> Result<()> {
             InfoOpts { json: args.json },
             &layout,
         ),
-        Cmd::Run(_) => unimplemented!("run lands in slice 5"),
+        Cmd::Run(args) => run::exec_replace(&args.target, &args.app_args, &layout),
         Cmd::Integrate(args) => {
             integrate::integrate(&args.target, &layout)?;
             println!("integrated {}", args.target);
