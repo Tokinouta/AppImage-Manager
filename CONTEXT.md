@@ -80,6 +80,34 @@ Hinnant's `days_from_civil` algorithm. Tests cover boundary years
   under the state record: `aim::error::invalid_target` (with a
   message pointing at the missing path).
 
+## What works in slice 6
+
+- `aim doctor` — read-only cross-check of `state.toml` against
+  the filesystem. Detects: MISSING-CACHE (state says file, gone),
+  MISSING-DESKTOP / MISSING-BIN-LINK (integrated=true but
+  artefact absent), DANGLING-BIN-LINK (symlink → nothing),
+  ORPHAN-CACHE / ORPHAN-DESKTOP / ORPHAN-BIN-LINK (file on disk
+  with no state record).
+- `aim gc [--yes] [--dry-run] [--json]` — sweeps the *recoverable*
+  subset of issues: orphans + danglers. Bit-rot detection /
+  Missing-Cache recovery is intentionally NOT in gc (those are
+  state inconsistencies that need a human; slice 10's `verify` /
+  `upgrade` handle bit-rot surgically).
+- `--dry-run` shows what would be removed, deletes nothing.
+- Without `--yes` in a non-TTY: prints the plan, refuses, suggests
+  `--yes`. With TTY: prompts `Proceed? [y/N]`.
+- Shared scanner: `aim::health::scan(layout) -> Vec<Issue>` is the
+  single source of truth; doctor and gc both consume it.
+- `IssueKind` is `serde::Serialize` with
+  `rename_all = "SCREAMING-KEBAB-CASE"`, so JSON output matches
+  the human-readable labels.
+
+### ORPHAN-CACHE cleanup includes the parent dir
+
+When `IssueKind::OrphanCache` triggers, `Issue::cleanup_paths()`
+returns both the AppImage file and its parent `apps/<key>/` dir
+so the leftover empty dir doesn't sit on disk.
+
 ## Storage layout
 
 ```

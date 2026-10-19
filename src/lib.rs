@@ -7,7 +7,10 @@
 pub mod cli;
 pub mod config;
 pub mod desktop;
+pub mod doctor;
 pub mod error;
+pub mod gc;
+pub mod health;
 pub mod identity;
 pub mod icon;
 pub mod install;

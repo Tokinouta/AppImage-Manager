@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 use crate::error::Result;
+use crate::doctor;
+use crate::gc;
 use crate::install::{self, InstallRequest};
 use crate::integrate;
 use crate::paths::Layout;
@@ -50,11 +52,11 @@ pub enum Cmd {
     /// Remove `.desktop` + bin symlink (leaves cache + state intact).
     Unintegrate(ManageArgs),
     /// Garbage-collect orphaned install state.
-    Gc,
+    Gc(GcArgs),
     /// List installed AppImages with upstream-update availability.
     Check,
     /// Read-only diagnostics: scan for filesystem inconsistencies.
-    Doctor,
+    Doctor(DoctorArgs),
     /// Re-hash and verify a cached AppImage against its recorded hash.
     Verify(VerifyArgs),
     /// Replace an installed AppImage with a newer release.
@@ -98,6 +100,28 @@ pub struct ListArgs {
     pub integrated_only: bool,
 
     /// Emit JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct GcArgs {
+    /// Skip the interactive confirmation prompt.
+    #[arg(short, long)]
+    pub yes: bool,
+
+    /// Report what would be deleted but touch nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Emit JSON listing each removable item.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+    /// Emit JSON listing each issue.
     #[arg(long)]
     pub json: bool,
 }
@@ -180,9 +204,22 @@ pub fn run(cli: Cli) -> Result<()> {
             println!("unintegrated {}", args.target);
             Ok(())
         }
-        Cmd::Gc => unimplemented!("gc lands in slice 6"),
+        Cmd::Gc(args) => {
+            gc::run(
+                gc::GcOpts {
+                    yes: args.yes,
+                    dry_run: args.dry_run,
+                    json: args.json,
+                },
+                &layout,
+            )?;
+            Ok(())
+        }
         Cmd::Check => unimplemented!("check lands in slice 9"),
-        Cmd::Doctor => unimplemented!("doctor lands in slice 6"),
+        Cmd::Doctor(args) => doctor::run(
+            doctor::DoctorOpts { json: args.json },
+            &layout,
+        ),
         Cmd::Verify(_) => unimplemented!("verify lands in slice 10"),
         Cmd::Upgrade(_) => unimplemented!("upgrade lands in slice 10"),
     }
