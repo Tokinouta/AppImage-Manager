@@ -11,6 +11,7 @@ pub mod doctor;
 pub mod download;
 pub mod error;
 pub mod gc;
+pub mod gh;
 pub mod health;
 pub mod identity;
 pub mod icon;

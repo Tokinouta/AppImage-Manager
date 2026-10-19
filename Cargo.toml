@@ -43,7 +43,7 @@ owo-colors = { version = "4.2", features = ["supports-colors"] }
 tempfile = "3"
 
 # HTTP
-ureq = "2.10"
+ureq = { version = "2.10", features = ["json"] }
 
 [dev-dependencies]
 assert_cmd = "2"

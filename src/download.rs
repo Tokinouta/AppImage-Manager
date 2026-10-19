@@ -31,7 +31,13 @@ pub fn is_url(s: &str) -> bool {
 /// Download `url` to a temp file in `cache_dir`. The file is
 /// persisted (NOT auto-removed) on success; on error the partial
 /// file is removed.
-pub fn download(url: &str, cache_dir: &Path) -> Result<Downloaded> {
+///
+/// `name_hint`, if provided, becomes the temp file's basename
+/// (e.g. `marktext-linux-0.22.0.AppImage`). The install pipeline
+/// falls back to this name when the AppImage's `AppImage.yml` is
+/// absent or doesn't carry an `id`. If `name_hint` is `None`, a
+/// generic `aim-dl-<rand>` prefix is used.
+pub fn download(url: &str, cache_dir: &Path, name_hint: Option<&str>) -> Result<Downloaded> {
     let response = ureq::get(url)
         .call()
         .map_err(|e| Error::Download { url: url.to_string(), message: e.to_string() })?;
@@ -45,9 +51,29 @@ pub fn download(url: &str, cache_dir: &Path) -> Result<Downloaded> {
         source,
     })?;
 
+    let (prefix, suffix) = match name_hint {
+        Some(h) => {
+            // Drop any directory components and anything sketchy.
+            let base = std::path::Path::new(h)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("aim-dl")
+                .to_string();
+            // We split into "<base>." + "" so the temp file ends up
+            // named like "<base>.<rand>". That keeps the file
+            // extension (and the user-meaningful name) intact.
+            let (stem, ext) = match base.rsplit_once('.') {
+                Some((s, e)) => (s.to_string(), format!(".{e}")),
+                None => (base, String::new()),
+            };
+            (format!("{stem}."), ext)
+        }
+        None => ("aim-dl-".to_string(), ".partial".to_string()),
+    };
+
     let mut tmp = tempfile::Builder::new()
-        .prefix("aim-dl-")
-        .suffix(".partial")
+        .prefix(&prefix)
+        .suffix(&suffix)
         .tempfile_in(cache_dir)
         .map_err(|source| Error::Path {
             path: cache_dir.to_path_buf(),
@@ -81,13 +107,48 @@ pub fn download(url: &str, cache_dir: &Path) -> Result<Downloaded> {
 
     pb.finish_and_clear();
 
-    let path = tmp.into_temp_path();
-    let owned: PathBuf = path.to_path_buf();
-    // Detach the temp path so the file isn't auto-removed.
-    let _ = path.keep();
+    // Make the downloaded file executable. We need this for two
+    // reasons:
+    // 1. `identity::identify` runs `--appimage-extract` on the
+    //    source, which requires +x.
+    // 2. Some AppImages refuse to mount/run with 0600 perms.
+    // The install pipeline will copy this file to the cache and
+    // set 0755 there too (defence in depth).
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(meta) = std::fs::metadata(tmp.path()) {
+        let mut perm = meta.permissions();
+        perm.set_mode(0o755);
+        let _ = std::fs::set_permissions(tmp.path(), perm);
+    }
+
+    // When the caller passed a `name_hint`, rename the temp file to
+    // use the hint verbatim. `tempfile::Builder` always adds a
+    // random suffix; that's fine for collision-safety during the
+    // download itself but leaves an ugly filename for the install
+    // pipeline's identity fallback (e.g. `marktext-linux-0.22.0.
+    // AppImage.abc123`). We do the rename here, so the install
+    // pipeline sees the asset's real name.
+    let final_path: PathBuf = if let Some(hint) = name_hint {
+        let target = cache_dir.join(sanitize_basename(hint));
+        if std::fs::rename(tmp.path(), &target).is_err() {
+            // Cross-device rename can fail; fall back to copy+remove.
+            std::fs::copy(tmp.path(), &target).map_err(|source| Error::Path {
+                path: target.clone(),
+                source,
+            })?;
+            let _ = std::fs::remove_file(tmp.path());
+        }
+        target
+    } else {
+        // No hint: keep the temp name; persist it.
+        tmp.into_temp_path().keep().map_err(|e| Error::Path {
+            path: cache_dir.to_path_buf(),
+            source: e.error,
+        })?
+    };
 
     let size = total_size.unwrap_or(written);
-    Ok(Downloaded { path: owned, size_bytes: size })
+    Ok(Downloaded { path: final_path, size_bytes: size })
 }
 
 fn make_progress_bar(total: Option<u64>) -> ProgressBar {
@@ -106,6 +167,16 @@ fn make_progress_bar(total: Option<u64>) -> ProgressBar {
         pb.set_style(ProgressStyle::with_template("{spinner}  downloading {bytes}").unwrap());
     }
     pb
+}
+
+/// Sanitize a filename hint so it's safe to use as a path
+/// component. Strips directory traversal, normalises whitespace.
+fn sanitize_basename(s: &str) -> String {
+    let base = std::path::Path::new(s)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("aim-dl");
+    base.to_string()
 }
 
 #[cfg(test)]

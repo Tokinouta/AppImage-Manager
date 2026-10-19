@@ -13,6 +13,7 @@ use crate::error::Result;
 use crate::doctor;
 use crate::download;
 use crate::gc;
+use crate::gh;
 use crate::install::{self, InstallRequest};
 use crate::integrate;
 use crate::paths::Layout;
@@ -227,19 +228,30 @@ pub fn run(cli: Cli) -> Result<()> {
 }
 
 fn cmd_install(args: InstallArgs, layout: &Layout) -> Result<()> {
-    // `gh:owner/repo` is a slice-8 feature; for now surface a clear
-    // error so the user knows the format is recognised but not yet
-    // wired up.
-    if args.source.starts_with("gh:") {
-        eprintln!("gh:owner/repo install lands in slice 8");
-        std::process::exit(2);
-    }
-
-    // URL install: download to a temp file in the data dir, then
-    // hand the local path to the install pipeline.
-    let (source_path, source_kind) = if download::is_url(&args.source) {
+    // `gh:owner/repo` resolution → download → install.
+    let (source_path, source_kind) = if args.source.starts_with("gh:") {
+        let gh_ref = gh::parse(&args.source)?;
+        let (tag, asset) = gh::resolve_release(&gh_ref)?;
+        eprintln!("resolved gh:{} -> {} ({})", gh_ref.repo, asset.name, tag);
         let cache_dir = layout.data_dir.join("downloads");
-        let dl = download::download(&args.source, &cache_dir)?;
+        // Use the asset's filename as a hint so the install
+        // pipeline's identity fallback sees `marktext-linux-X.Y.Z`
+        // rather than `aim-dl-randhex`.
+        let dl = download::download(&asset.url, &cache_dir, Some(&asset.name))?;
+        (
+            dl.path,
+            Source::Gh {
+                owner: gh_ref.owner,
+                repo: gh_ref.repo,
+            },
+        )
+    } else if download::is_url(&args.source) {
+        // URL install: download to a temp file in the data dir, then
+        // hand the local path to the install pipeline. Use the URL's
+        // path basename as a filename hint.
+        let cache_dir = layout.data_dir.join("downloads");
+        let hint = url_path_basename(&args.source);
+        let dl = download::download(&args.source, &cache_dir, hint.as_deref())?;
         let url = args.source.clone();
         (dl.path, Source::Url { url })
     } else {
@@ -271,4 +283,19 @@ fn cmd_install(args: InstallArgs, layout: &Layout) -> Result<()> {
         println!("icon extracted");
     }
     Ok(())
+}
+
+/// Pull the last non-empty path component from a URL, used as a
+/// filename hint for downloads. Returns `None` if the URL has no
+/// usable basename.
+fn url_path_basename(url: &str) -> Option<String> {
+    // Strip query string and fragment.
+    let path = url.split_once('?').map(|(p, _)| p).unwrap_or(url);
+    let path = path.split_once('#').map(|(p, _)| p).unwrap_or(path);
+    let last = path.rsplit_once('/').map(|(_, b)| b).unwrap_or(path);
+    if last.is_empty() {
+        None
+    } else {
+        Some(last.to_string())
+    }
 }

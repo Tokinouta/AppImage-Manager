@@ -135,6 +135,40 @@ behind if the OS killed the process between `tempfile_in` and
 `into_temp_path()`. Slice 7 marks this; we can fold it into
 `aim gc` in a follow-up polish slice, or as part of slice 8.
 
+## What works in slice 8
+
+- `aim install gh:owner/repo` — resolves to the latest release,
+  picks the AppImage asset, downloads it, and runs the install
+  pipeline. State record uses `Source::Gh { owner, repo }`.
+- Parser: `gh:owner/repo`, `gh:owner/repo@version`, and
+  `gh:owner/repo.git` (the `.git` suffix is stripped).
+- Two resolution paths: the `gh` CLI (preferred; uses the
+  authenticated user's token transparently, works for private
+  repos) and a REST fallback against
+  `api.github.com/repos/{owner}/{repo}/releases/latest`. The
+  REST path also opportunistically reads `gh auth token` to bump
+  rate limits; this requires no new config from the user.
+- Asset selection (`pick_appimage`): filter by `.appimage` (case
+  insensitive) extension, take the single candidate, or the
+  largest of multiple. Errors if the release has no AppImage.
+- `gh` CLI version drift: gh 2.102+ emits the field as `"url"`,
+  older versions as `"browserDownloadUrl"`. Both are accepted via
+  `serde(alias = …)`.
+- `name_hint` plumbing: when slice 7's downloader is given a hint
+  (the asset's name for gh:, the URL path's basename for URL
+  installs), the temp file is renamed verbatim to the hint so the
+  install pipeline's identity fallback sees the real name. Without
+  the hint the install id is `aim-dl-XXXXXX`, which is unhelpful.
+
+### UX note: bin link quoting
+
+The bin link for `marktext-linux@0.22.0` is
+`~/.local/bin/marktext-linux@0.22.0`. The `@` is a valid filename
+character on Linux, but the user has to quote it in the shell.
+The cleaner workaround for users who want a pretty name is
+`aim install gh:marktext/marktext --name marktext`, which makes
+the id and bin link just `marktext`.
+
 ## Storage layout
 
 ```
