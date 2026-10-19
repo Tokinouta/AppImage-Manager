@@ -114,12 +114,10 @@ pub fn run(req: InstallRequest, layout: &Layout) -> Result<InstallResult> {
         None => (None, None),
     };
 
-    // 6. Build the AppRecord. The integration flag inside the record is
-    //    derived from `!no_integrate` so the renderer below sees the
-    //    *final* value, not an intermediate state.
+    // 6. Build the AppRecord. The renderer derives `AIM_INTEGRATED`
+    //    from `record.integrated`, so we don't keep a copy in `env`;
+    //    the per-app env map is for user overrides only.
     let will_integrate = !req.no_integrate;
-    let mut env = std::collections::BTreeMap::new();
-    env.insert("AIM_INTEGRATED".to_string(), if will_integrate { "1" } else { "0" }.to_string());
     let record = AppRecord {
         id: identity.id.clone(),
         version: identity.version.clone(),
@@ -129,7 +127,7 @@ pub fn run(req: InstallRequest, layout: &Layout) -> Result<InstallResult> {
         source: req.source_kind.clone(),
         icon_size_px,
         icon_path: icon_path_rel,
-        env,
+        env: std::collections::BTreeMap::new(),
         extra_exec_args: Vec::new(),
         comment: None,
         categories: Vec::new(),

@@ -15,8 +15,22 @@ host was unreliable.
 - Composite identity `[id@version]`, with `--name` override.
 - Already-installed collision errors unless `--force`.
 
+## What works in slice 2
+
+- `aim integrate <id>` — re-render `.desktop` from current state and
+  drop the bin symlink. Idempotent.
+- `aim unintegrate <id>` — remove `.desktop` and bin symlink; cache
+  + state survive. Idempotent.
+- `state::State::lookup(target)` accepts both `id@version` and bare
+  `id` (errors if bare-id matches multiple records).
+- `desktop::render` is the single source of truth for the
+  `.desktop` format. It derives `AIM_INTEGRATED` from
+  `record.integrated`, so callers don't have to keep it in
+  `record.env`. Slice 1 had two writes (render, then mutate env)
+  racing and the env got out of sync — fixed.
+
 The other subcommands exist in the parser but `unimplemented!()` —
-they land in slices 2–10 in the order agreed at design time.
+they land in slices 3–10 in the order agreed at design time.
 
 ## Storage layout
 

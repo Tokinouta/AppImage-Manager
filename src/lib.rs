@@ -11,6 +11,7 @@ pub mod error;
 pub mod identity;
 pub mod icon;
 pub mod install;
+pub mod integrate;
 pub mod output;
 pub mod paths;
 pub mod staging;

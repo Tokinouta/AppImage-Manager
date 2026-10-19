@@ -61,6 +61,43 @@ impl State {
             toml::to_string(self).map_err(|e| Error::StateCorrupt { message: format!("{e}") })?;
         crate::staging::atomic_write(path, text.as_bytes())
     }
+
+    /// Resolve a user-supplied target string to the record it names.
+    /// Accepts:
+    ///
+    /// - The literal key `id@version` (preferred).
+    /// - A bare `id` when exactly one record matches; errors otherwise.
+    pub fn lookup(&self, target: &str) -> Result<(String, AppRecord)> {
+        if let Some(rec) = self.apps.get(target) {
+            return Ok((target.to_string(), rec.clone()));
+        }
+        let matches: Vec<_> = self
+            .apps
+            .iter()
+            .filter(|(k, _)| k.starts_with(target) && k.as_str() == target || {
+                // bare-id match: the key either equals the target or
+                // matches `target@<something>`.
+                if let Some((id_part, _)) = k.split_once('@') {
+                    id_part == target
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        match matches.len() {
+            0 => Err(Error::NotInstalled { id: target.to_string() }),
+            1 => {
+                let (k, v) = matches[0];
+                Ok((k.clone(), v.clone()))
+            }
+            n => Err(Error::InvalidTarget {
+                message: format!(
+                    "'{target}' matches {n} installs; pass a full id@version to disambiguate"
+                ),
+            }),
+        }
+    }
 }
 
 /// A single install record.

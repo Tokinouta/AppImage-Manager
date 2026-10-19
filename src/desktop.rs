@@ -31,30 +31,28 @@ pub fn render(record: &AppRecord, appimage_path: &Path) -> String {
 
     let appimage_path_str = appimage_path.to_string_lossy();
     let extra = record.extra_exec_args.join(" ");
-    let exec = if extra.is_empty() {
-        appimage_path_str.to_string()
-    } else {
-        format!("{appimage_path_str} {extra}")
-    };
 
-    if record.env.is_empty() {
-        let _ = writeln!(out, "Exec={exec}");
+    // Compute the env that the *rendered* `.desktop` needs. The
+    // record's `env` already contains user overrides; we layer
+    // `AIM_INTEGRATED` on top so its value is always derived from the
+    // `integrated` flag rather than whatever was in state.
+    let mut render_env: std::collections::BTreeMap<&str, &str> =
+        record.env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    render_env.insert("AIM_INTEGRATED", if record.integrated { "1" } else { "0" });
+
+    let env_str = render_env
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    // Always wrap in `env … sh -c "…"`, even if `render_env` is
+    // empty, so the rendered Exec stays a single `sh -c` argument.
+    let shell_exec = if extra.is_empty() {
+        format!("\"{appimage_path_str}\"")
     } else {
-        // We need the AppImage + extra args to share a single shell
-        // command so the env vars lead the line.
-        let shell_exec = if extra.is_empty() {
-            format!("\"{appimage_path_str}\"")
-        } else {
-            format!("\"{appimage_path_str}\" {extra}")
-        };
-        let env_str = record
-            .env
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let _ = writeln!(out, "Exec=env {env_str} sh -c {shell_exec}");
-    }
+        format!("\"{appimage_path_str}\" {extra}")
+    };
+    let _ = writeln!(out, "Exec=env {env_str} sh -c {shell_exec}");
 
     // Icon must be the *theme name* without an extension to work with
     // hicolor index lookup.
@@ -111,7 +109,7 @@ mod tests {
         assert!(body.contains("Name=foo"));
         assert!(body.contains("Comment=A foo app"));
         assert!(body.contains("Categories=Utility"));
-        assert!(body.contains("Exec=env WAYLAND=1 sh -c \"/cache/foo@1.0.0/AppImage\" --no-sandbox"));
+        assert!(body.contains("Exec=env AIM_INTEGRATED=0 WAYLAND=1 sh -c \"/cache/foo@1.0.0/AppImage\" --no-sandbox"));
         assert!(body.contains("Icon=aim-foo"));
         assert!(body.contains("StartupWMClass=foo"));
     }
@@ -125,8 +123,24 @@ mod tests {
         r.categories.clear();
         r.icon_path = None;
         let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
-        assert!(body.contains("Exec=/cache/foo@1.0.0/AppImage"));
+        // Even with no envs and no extra args, we always wrap in
+        // `env ... sh -c ...` so the layout of the Exec line stays
+        // stable for diffing.
+        assert!(body.contains("Exec=env AIM_INTEGRATED=0 sh -c \"/cache/foo@1.0.0/AppImage\""));
         assert!(!body.contains("Icon="));
         assert!(!body.contains("Comment="));
+    }
+
+    #[test]
+    fn integrated_flag_drives_aim_integrated_env() {
+        let mut r = rec();
+        r.env.clear();
+        r.integrated = true;
+        let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
+        assert!(body.contains("Exec=env AIM_INTEGRATED=1"));
+
+        r.integrated = false;
+        let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
+        assert!(body.contains("Exec=env AIM_INTEGRATED=0"));
     }
 }

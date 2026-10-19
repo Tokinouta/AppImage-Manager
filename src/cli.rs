@@ -11,6 +11,8 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::error::Result;
 use crate::install::{self, InstallRequest};
+use crate::integrate;
+use crate::paths::Layout;
 use crate::state::Source;
 
 #[derive(Debug, Parser)]
@@ -148,14 +150,23 @@ pub struct UpgradeArgs {
 /// op module. Errors propagate via `?` and are formatted as `miette`
 /// reports in `main`.
 pub fn run(cli: Cli) -> Result<()> {
+    let layout = Layout::resolve();
     match cli.cmd {
-        Cmd::Install(args) => cmd_install(args),
+        Cmd::Install(args) => cmd_install(args, &layout),
         Cmd::Remove(_) => unimplemented!("remove lands in slice 4"),
         Cmd::List(_) => unimplemented!("list lands in slice 3"),
         Cmd::Info(_) => unimplemented!("info lands in slice 3"),
         Cmd::Run(_) => unimplemented!("run lands in slice 5"),
-        Cmd::Integrate(_) => unimplemented!("integrate lands in slice 2"),
-        Cmd::Unintegrate(_) => unimplemented!("unintegrate lands in slice 2"),
+        Cmd::Integrate(args) => {
+            integrate::integrate(&args.target, &layout)?;
+            println!("integrated {}", args.target);
+            Ok(())
+        }
+        Cmd::Unintegrate(args) => {
+            integrate::unintegrate(&args.target, &layout)?;
+            println!("unintegrated {}", args.target);
+            Ok(())
+        }
         Cmd::Gc => unimplemented!("gc lands in slice 6"),
         Cmd::Check => unimplemented!("check lands in slice 9"),
         Cmd::Doctor => unimplemented!("doctor lands in slice 6"),
@@ -164,15 +175,11 @@ pub fn run(cli: Cli) -> Result<()> {
     }
 }
 
-fn cmd_install(args: InstallArgs) -> Result<()> {
-    use crate::paths::Layout;
-
-    let layout = Layout::resolve();
-
+fn cmd_install(args: InstallArgs, layout: &Layout) -> Result<()> {
     // Slice 1 disambiguation: only local paths are accepted.
     if args.source.contains("://") || args.source.starts_with("gh:") {
         eprintln!(
-            "slice 1 only supports local paths; url / gh: support lands in slices 7-8"
+            "slices 1-2 only support local paths; url / gh: support lands in slices 7-8"
         );
         std::process::exit(2);
     }
@@ -186,13 +193,13 @@ fn cmd_install(args: InstallArgs) -> Result<()> {
         force: args.force,
     };
 
-    let result = install::run(req, &layout)?;
+    let result = install::run(req, layout)?;
     println!(
         "installed {}@{} (sha256={}) -> {}",
         result.record.id,
         result.record.version.as_deref().unwrap_or("?"),
         &result.record.sha256[..12],
-        crate::paths::Layout::resolve().appimage_path(&result.record.key()).display()
+        layout.appimage_path(&result.record.key()).display()
     );
     if result.integrated {
         println!("integrated (.desktop + bin symlink created)");
