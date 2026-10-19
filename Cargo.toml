@@ -42,6 +42,9 @@ owo-colors = { version = "4.2", features = ["supports-colors"] }
 # Filesystem
 tempfile = "3"
 
+# HTTP
+ureq = "2.10"
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"

@@ -11,6 +11,7 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::error::Result;
 use crate::doctor;
+use crate::download;
 use crate::gc;
 use crate::install::{self, InstallRequest};
 use crate::integrate;
@@ -226,18 +227,30 @@ pub fn run(cli: Cli) -> Result<()> {
 }
 
 fn cmd_install(args: InstallArgs, layout: &Layout) -> Result<()> {
-    // Slice 1 disambiguation: only local paths are accepted.
-    if args.source.contains("://") || args.source.starts_with("gh:") {
-        eprintln!(
-            "slices 1-2 only support local paths; url / gh: support lands in slices 7-8"
-        );
+    // `gh:owner/repo` is a slice-8 feature; for now surface a clear
+    // error so the user knows the format is recognised but not yet
+    // wired up.
+    if args.source.starts_with("gh:") {
+        eprintln!("gh:owner/repo install lands in slice 8");
         std::process::exit(2);
     }
 
-    let source_path = PathBuf::from(&args.source);
+    // URL install: download to a temp file in the data dir, then
+    // hand the local path to the install pipeline.
+    let (source_path, source_kind) = if download::is_url(&args.source) {
+        let cache_dir = layout.data_dir.join("downloads");
+        let dl = download::download(&args.source, &cache_dir)?;
+        let url = args.source.clone();
+        (dl.path, Source::Url { url })
+    } else {
+        let p = PathBuf::from(&args.source);
+        let path_str = p.to_string_lossy().into_owned();
+        (p, Source::Local { path: path_str })
+    };
+
     let req = InstallRequest {
         source: source_path,
-        source_kind: Source::Local { path: args.source.clone() },
+        source_kind,
         name_override: args.name,
         no_integrate: args.no_integrate,
         force: args.force,

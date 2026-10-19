@@ -108,6 +108,33 @@ When `IssueKind::OrphanCache` triggers, `Issue::cleanup_paths()`
 returns both the AppImage file and its parent `apps/<key>/` dir
 so the leftover empty dir doesn't sit on disk.
 
+## What works in slice 7
+
+- `aim install <https://…>` — downloads the AppImage to a temp
+  file under `data_dir/downloads/`, then runs the same install
+  pipeline as the local-path code path. The state record's `source`
+  is `{ kind: "url", url: <orig> }`.
+- HTTP via `ureq` 2.x (rustls under the hood, default features
+  pick `tls`).
+- Progress bar (via `indicative`): bytes/total when
+  `Content-Length` is present, spinner otherwise.
+- On any I/O error mid-download the partial file is cleaned up by
+  the tempdir drop guard.
+- New error variant: `aim::error::download`. The `Download { url,
+  message }` payload is what users will see when the network is
+  down or the server returns 4xx/5xx.
+- `gh:owner/repo` is detected at the CLI level and refused with
+  "lands in slice 8" so the format is recognised but not yet
+  wired up.
+
+### Follow-up: `downloads/` orphan detection
+
+The health scanner (slice 6) doesn't yet look at `data_dir/downloads/`
+for orphaned `.partial` files. A failed install can leave one
+behind if the OS killed the process between `tempfile_in` and
+`into_temp_path()`. Slice 7 marks this; we can fold it into
+`aim gc` in a follow-up polish slice, or as part of slice 8.
+
 ## Storage layout
 
 ```

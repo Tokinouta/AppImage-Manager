@@ -69,6 +69,10 @@ pub enum Error {
     #[error("not installed: {id}")]
     #[diagnostic(code(aim::error::not_installed))]
     NotInstalled { id: String },
+
+    #[error("download failed: {url} ({message})")]
+    #[diagnostic(code(aim::error::download))]
+    Download { url: String, message: String },
 }
 
 impl Error {
@@ -88,6 +92,7 @@ impl Error {
             Self::Json(_) => "aim::error::json",
             Self::AlreadyInstalled { .. } => "aim::error::already_installed",
             Self::NotInstalled { .. } => "aim::error::not_installed",
+            Self::Download { .. } => "aim::error::download",
         }
     }
 }
