@@ -13,6 +13,7 @@ use crate::error::Result;
 use crate::install::{self, InstallRequest};
 use crate::integrate;
 use crate::paths::Layout;
+use crate::remove;
 use crate::show::{self, InfoOpts, ListOpts};
 use crate::state::Source;
 
@@ -154,7 +155,7 @@ pub fn run(cli: Cli) -> Result<()> {
     let layout = Layout::resolve();
     match cli.cmd {
         Cmd::Install(args) => cmd_install(args, &layout),
-        Cmd::Remove(_) => unimplemented!("remove lands in slice 4"),
+        Cmd::Remove(args) => remove::run(&args.targets, args.purge, &layout),
         Cmd::List(args) => show::list(
             ListOpts {
                 integrated_only: args.integrated_only,

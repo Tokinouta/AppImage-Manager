@@ -51,6 +51,21 @@ We compute timestamps ourselves (no `chrono` dep) with Howard
 Hinnant's `days_from_civil` algorithm. Tests cover boundary years
 (1970, 2000).
 
+## What works in slice 4
+
+- `aim remove <id...>` — drops the state record and removes the
+  `.desktop` file and bin symlink. The cached AppImage **stays on
+  disk** as an orphan (per spec; "keep for traceability").
+- `aim remove <id...> --purge` — same, plus deletes the cache dir
+  (`apps/<id@version>/`) and the icon. True uninstall.
+- Multi-target removal in one invocation (`aim remove foo bar baz`).
+- The first lookup miss aborts the whole run (no partial cleanup);
+  this is the obvious per-spec behaviour, easy to make `--keep-going`
+  in a future polish slice.
+- `aim gc` will sweep the orphaned caches in slice 6; for now they
+  sit on disk until `--purge` is used in the same invocation, or
+  until the user `rm -rf`s them manually.
+
 ## Storage layout
 
 ```
