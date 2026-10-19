@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 use crate::error::Result;
+use crate::check;
 use crate::doctor;
 use crate::download;
 use crate::gc;
@@ -56,7 +57,7 @@ pub enum Cmd {
     /// Garbage-collect orphaned install state.
     Gc(GcArgs),
     /// List installed AppImages with upstream-update availability.
-    Check,
+    Check(CheckArgs),
     /// Read-only diagnostics: scan for filesystem inconsistencies.
     Doctor(DoctorArgs),
     /// Re-hash and verify a cached AppImage against its recorded hash.
@@ -124,6 +125,17 @@ pub struct GcArgs {
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
     /// Emit JSON listing each issue.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CheckArgs {
+    /// Only show records that have an upstream upgrade available.
+    #[arg(long)]
+    pub outdated_only: bool,
+
+    /// Emit JSON.
     #[arg(long)]
     pub json: bool,
 }
@@ -217,7 +229,13 @@ pub fn run(cli: Cli) -> Result<()> {
             )?;
             Ok(())
         }
-        Cmd::Check => unimplemented!("check lands in slice 9"),
+        Cmd::Check(args) => check::run(
+            check::CheckOpts {
+                outdated_only: args.outdated_only,
+                json: args.json,
+            },
+            &layout,
+        ),
         Cmd::Doctor(args) => doctor::run(
             doctor::DoctorOpts { json: args.json },
             &layout,

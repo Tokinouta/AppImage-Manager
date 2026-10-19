@@ -169,6 +169,37 @@ The cleaner workaround for users who want a pretty name is
 `aim install gh:marktext/marktext --name marktext`, which makes
 the id and bin link just `marktext`.
 
+## What works in slice 9
+
+- `aim check [--outdated-only] [--json]` — for every state record,
+  reports `LOCAL`, `UPSTREAM`, and `STATUS`:
+    - `up-to-date` — versions match
+    - `upgrade available` — upstream is newer
+    - `ahead of upstream` — local is newer (custom build, e.g.)
+    - `unknown` — either side failed to parse
+    - `not trackable` — source is `Local` / `Url` / `Unknown`
+    - `upstream check failed: <why>` — GitHub resolution errored;
+      the rest of the report still prints so one bad record
+      doesn't kill the run.
+- Version parsing: extracts the leading numeric prefix of each
+  dot/dash/plus-separated segment, so `1.0.0-beta.1` →
+  `[1, 0, 0]` and `2.0.0rc1` → `[2, 0, 0]`. Tolerant of `v`- and
+  `release-`-prefixes.
+- Version comparison: semver-style, with the rule that trailing
+  zeros are equivalent (`1.0 == 1.0.0`).
+- Reuses `gh::resolve_release` from slice 8 for the upstream
+  fetch; both `gh` CLI and REST paths now correctly propagate the
+  release tag.
+
+### Bug found + fixed in slice 9
+
+`gh::resolve_release` was hardcoding the tag as `"latest"` for the
+gh CLI path, hiding the real version from `aim check`. The fix was
+two parts: thread the actual `tagName` through `try_gh_cli` (the
+function now returns `(String, Vec<Asset>)`), and add
+`#[serde(rename_all = "camelCase")]` to `GhCliRelease` so the
+field is read as `tagName` (gh's output) instead of `tag_name`.
+
 ## Storage layout
 
 ```

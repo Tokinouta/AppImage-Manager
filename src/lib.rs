@@ -5,6 +5,7 @@
 //! dispatch lives in [`cli`].
 
 pub mod cli;
+pub mod check;
 pub mod config;
 pub mod desktop;
 pub mod doctor;

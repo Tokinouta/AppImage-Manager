@@ -95,9 +95,8 @@ pub fn pick_appimage(assets: &[Asset]) -> Result<&Asset> {
 /// release and the chosen AppImage asset.
 pub fn resolve_release(r: &GhRef) -> Result<(String, Asset)> {
     // Try gh CLI
-    if let Ok(assets) = try_gh_cli(r) {
+    if let Ok((tag, assets)) = try_gh_cli(r) {
         if let Ok(asset) = pick_appimage(&assets) {
-            let tag = "latest".to_string();
             return Ok((tag, asset.clone()));
         }
     }
@@ -109,7 +108,7 @@ pub fn resolve_release(r: &GhRef) -> Result<(String, Asset)> {
 
 // ─── gh CLI path ─────────────────────────────────────────────────────
 
-fn try_gh_cli(r: &GhRef) -> Result<Vec<Asset>> {
+fn try_gh_cli(r: &GhRef) -> Result<(String, Vec<Asset>)> {
     let repo = format!("{}/{}", r.owner, r.repo);
     let output = std::process::Command::new("gh")
         .args([
@@ -145,6 +144,7 @@ fn try_gh_cli(r: &GhRef) -> Result<Vec<Asset>> {
         }
     })?;
 
+    let tag = parsed.tag_name.unwrap_or_else(|| "latest".to_string());
     let assets = parsed
         .assets
         .into_iter()
@@ -154,12 +154,12 @@ fn try_gh_cli(r: &GhRef) -> Result<Vec<Asset>> {
             size_bytes: a.size as u64,
         })
         .collect();
-    Ok(assets)
+    Ok((tag, assets))
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GhCliRelease {
-    #[allow(dead_code)]
     tag_name: Option<String>,
     assets: Vec<GhCliAsset>,
 }
