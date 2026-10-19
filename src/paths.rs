@@ -58,7 +58,9 @@ impl Layout {
         // `$XDG_DATA_HOME/icons/`, NOT inside our app-specific data
         // dir. Otherwise the icon theme lookup (hicolor, Adwaita,
         // etc.) will never find them.
-        let icons_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+        let icons_dir = dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("icons");
         let state_file = data_dir.join("state.toml");
         let apps_root_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
 
@@ -84,7 +86,7 @@ impl Layout {
         let apps_dir = data_dir.join("apps");
         // Same XDG rationale as `resolve()`: icons live in
         // `$XDG_DATA_HOME/icons/`, sibling to our app data dir.
-        let icons_dir = home.join(".local").join("share");
+        let icons_dir = home.join(".local").join("share").join("icons");
         let state_file = data_dir.join("state.toml");
         // The XDG apps dir sits next to `data_dir` in the `share/`
         // tree. `with_home` mirrors the exact same relative layout.
@@ -210,6 +212,28 @@ mod tests {
         assert_eq!(
             p.file_name().unwrap().to_string_lossy(),
             "aim-marktext-linux.png"
+        );
+    }
+
+    #[test]
+    fn icon_path_lands_in_xdg_theme_directory() {
+        // Regression for the bug where icons ended up at
+        // `~/.local/share/hicolor/...` (missing the `icons/`
+        // segment). The XDG icon theme lookup only searches under
+        // `$XDG_DATA_HOME/icons/`, so the icons directory must
+        // include the `icons` segment.
+        let home = std::path::PathBuf::from("/tmp");
+        let layout = Layout::with_home(home);
+        let p = layout.icon_path("siyuan@3.8.7", 512);
+        let s = p.to_string_lossy();
+        assert!(
+            s.contains("/share/icons/hicolor/"),
+            "icon_path must live under <XDG_DATA_HOME>/icons/ — got {s}"
+        );
+        // And it must NOT be under our app data dir.
+        assert!(
+            !s.contains("/share/aim/"),
+            "icon_path must not live under our app data dir — got {s}"
         );
     }
 }

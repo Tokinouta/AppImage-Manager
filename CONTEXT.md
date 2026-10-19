@@ -308,6 +308,26 @@ icon-path tests caught the alignment but not the directory —
 worth adding an integration test that asserts the icon ends up
 in the XDG theme location.
 
+## Bug fix: missing `icons/` segment in icons_dir
+
+The previous fix set `icons_dir = dirs::data_dir()` (which is
+`~/.local/share`), so `icon_path` joined that with
+`hicolor/512x512/apps/...` and produced
+`~/.local/share/hicolor/512x512/apps/aim-<id>.png` — missing
+the `icons/` segment. The correct path is
+`~/.local/share/icons/hicolor/512x512/apps/aim-<id>.png`.
+
+Fix: join `dirs::data_dir()` with `"icons"` in `resolve()`, and
+`home/.local/share` with `"icons"` in `with_home()`. Added a
+new regression test (`icon_path_lands_in_xdg_theme_directory`)
+that asserts the icon path contains `/share/icons/hicolor/`
+and does NOT contain `/share/aim/`. 86 unit tests, all green.
+
+Existing installs needed their icons moved from
+`~/.local/share/hicolor/...` (the previous broken location) to
+`~/.local/share/icons/hicolor/...`. The user's siyuan install
+was migrated as part of this fix.
+
 ## Storage layout
 
 ```
