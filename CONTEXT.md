@@ -286,6 +286,28 @@ Tests: 4 new in paths + desktop locking in the alignment
 icon_path_no_version_uses_full_key, icon_name_matches_paths_icon_filename).
 85 unit + 4 integration green total.
 
+## Bug fix: icons in the wrong XDG directory
+
+The first fix only aligned the file *name* — the directory was
+still wrong. `Layout::icons_dir` resolved to
+`~/.local/share/aim/icons`, but the XDG icon theme spec puts
+user-installable icons in `~/.local/share/icons/`. The icon
+theme search path (used by hicolor, Adwaita, Breeze, …) only
+looks under `~/.local/share/icons/`, so even a correctly-named
+file in the wrong directory is invisible to the desktop.
+
+Fix: `Layout::icons_dir` now points to `$XDG_DATA_HOME/icons`
+(sibling to our app data dir) in both `resolve()` and
+`with_home()`. Existing installs need their icon files moved
+from `~/.local/share/aim/icons/...` to
+`~/.local/share/icons/...`, then `gtk-update-icon-cache` to
+rebuild the theme index.
+
+Tests: same 85 unit + 4 integration still pass; the existing
+icon-path tests caught the alignment but not the directory —
+worth adding an integration test that asserts the icon ends up
+in the XDG theme location.
+
 ## Storage layout
 
 ```

@@ -54,7 +54,11 @@ impl Layout {
             .unwrap_or_else(|| PathBuf::from("/tmp/bin"));
 
         let apps_dir = data_dir.join("apps");
-        let icons_dir = data_dir.join("icons");
+        // Icons must live in the *theme* search path, which is
+        // `$XDG_DATA_HOME/icons/`, NOT inside our app-specific data
+        // dir. Otherwise the icon theme lookup (hicolor, Adwaita,
+        // etc.) will never find them.
+        let icons_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
         let state_file = data_dir.join("state.toml");
         let apps_root_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
 
@@ -78,7 +82,9 @@ impl Layout {
         let bin_dir = home.join(".local").join("bin");
 
         let apps_dir = data_dir.join("apps");
-        let icons_dir = data_dir.join("icons");
+        // Same XDG rationale as `resolve()`: icons live in
+        // `$XDG_DATA_HOME/icons/`, sibling to our app data dir.
+        let icons_dir = home.join(".local").join("share");
         let state_file = data_dir.join("state.toml");
         // The XDG apps dir sits next to `data_dir` in the `share/`
         // tree. `with_home` mirrors the exact same relative layout.

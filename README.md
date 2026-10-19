@@ -93,7 +93,7 @@ aim gc --yes
 ~/.config/aim/                  # config (currently empty; reserved)
 ~/.local/share/aim/state.toml   # canonical install state
 ~/.local/share/aim/apps/<id@ver>/AppImage   # cached AppImages
-~/.local/share/aim/icons/hicolor/<N>x<N>/apps/aim-<id>.png
+~/.local/share/icons/hicolor/<N>x<N>/apps/aim-<id>.png   # XDG theme path
 ~/.local/share/aim/downloads/   # partial download tempfiles
 ~/.local/share/applications/aim-<id>.desktop
 ~/.local/bin/<id>               # symlink to the cached AppImage
