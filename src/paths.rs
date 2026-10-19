@@ -123,14 +123,28 @@ impl Layout {
         self.bin_dir.join(sanitize_id(id_version))
     }
 
-    /// Icon path for a specific theme size.
+    /// Icon path for a specific theme size. The filename uses just
+    /// the id (not the full `id@version` key) so that the
+    /// `.desktop` file's `Icon=aim-<id>` reference resolves
+    /// consistently via the hicolor theme lookup.
     #[must_use]
     pub fn icon_path(&self, id_version: &str, size: u32) -> PathBuf {
+        let id = id_for_key(id_version);
         self.icons_dir
             .join("hicolor")
             .join(format!("{size}x{size}"))
             .join("apps")
-            .join(format!("aim-{}.png", sanitize_id(id_version)))
+            .join(format!("aim-{}.png", sanitize_id(id)))
+    }
+}
+
+/// Return the id portion (before `@version`) of a state-record key.
+/// When the key has no `@`, the whole string is the id.
+#[must_use]
+pub fn id_for_key(key: &str) -> &str {
+    match key.split_once('@') {
+        Some((id, _)) => id,
+        None => key,
     }
 }
 
@@ -155,4 +169,41 @@ pub fn ensure_dir(path: &Path) -> Result<()> {
         source,
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn id_for_key_strips_version() {
+        assert_eq!(id_for_key("Readest@0.12.16"), "Readest");
+        assert_eq!(id_for_key("marktext-linux"), "marktext-linux");
+        assert_eq!(id_for_key("foo@1.0.0-beta.1"), "foo");
+    }
+
+    #[test]
+    fn icon_path_uses_id_only() {
+        let home = std::path::PathBuf::from("/tmp");
+        let layout = Layout::with_home(home);
+        // The .desktop file references `Icon=aim-Readest`; the
+        // icon file must live at the same name. Regression for the
+        // bug where the file was named `aim-Readest@0.12.16.png`.
+        let p = layout.icon_path("Readest@0.12.16", 512);
+        assert_eq!(
+            p.file_name().unwrap().to_string_lossy(),
+            "aim-Readest.png"
+        );
+    }
+
+    #[test]
+    fn icon_path_no_version_uses_full_key() {
+        let home = std::path::PathBuf::from("/tmp");
+        let layout = Layout::with_home(home);
+        let p = layout.icon_path("marktext-linux", 512);
+        assert_eq!(
+            p.file_name().unwrap().to_string_lossy(),
+            "aim-marktext-linux.png"
+        );
+    }
 }

@@ -115,6 +115,28 @@ mod tests {
     }
 
     #[test]
+    fn icon_name_matches_paths_icon_filename() {
+        // Lock in the alignment that the bug report broke: the
+        // rendered `Icon=` line must match the basename that
+        // `Layout::icon_path` produces.
+        let r = rec();
+        let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
+        let layout = crate::paths::Layout::with_home(std::path::PathBuf::from("/tmp"));
+        let filename = layout
+            .icon_path("foo@1.0.0", 512)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        // `Icon=` line says `Icon=<filename>-stem>` (no extension).
+        let stem = filename.trim_end_matches(".png");
+        assert!(
+            body.contains(&format!("Icon={stem}")),
+            "rendered Icon= must match paths::icon_path filename stem ({filename}):\n{body}"
+        );
+    }
+
+    #[test]
     fn renders_without_env_or_args() {
         let mut r = rec();
         r.env.clear();

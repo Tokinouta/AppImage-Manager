@@ -256,6 +256,36 @@ the old one. The user can fix this by editing the state, or by
 4. `aim verify` → "OK"
 5. `aim check` → "up-to-date"
 
+## Bug fix: icon filename mismatch
+
+The `.desktop` file's `Icon=` line was `aim-<id>` (e.g.
+`Icon=aim-Readest`), but `paths::icon_path` was building the
+filename from the full key, producing `aim-<id@version>.png`
+(e.g. `aim-Readest@0.12.16.png`). The two names didn't refer
+to the same file, so desktop environments couldn't resolve the
+icon for any install where the AppImage was identified by both
+id and version — i.e. all of them.
+
+Fixed by stripping the `@version` part in `paths::icon_path`
+(via a new `id_for_key` helper), so the file lands at the name
+the renderer references. Existing installs need a one-time manual
+migration:
+
+```bash
+mv ~/.local/share/aim/icons/hicolor/512x512/apps/aim-<id>@<ver>.png \
+   ~/.local/share/aim/icons/hicolor/512x512/apps/aim-<id>.png
+sed -i 's|aim-<id>@<ver>.png|aim-<id>.png|' ~/.local/share/aim/state.toml
+aim integrate <id>@<ver>      # re-render the .desktop
+```
+
+A future polish slice could add an `aim doctor` rule that
+detects the old-style icon files and migrates them automatically.
+
+Tests: 4 new in paths + desktop locking in the alignment
+(id_for_key_strips_version, icon_path_uses_id_only,
+icon_path_no_version_uses_full_key, icon_name_matches_paths_icon_filename).
+85 unit + 4 integration green total.
+
 ## Storage layout
 
 ```
