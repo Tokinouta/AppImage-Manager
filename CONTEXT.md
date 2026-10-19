@@ -29,8 +29,27 @@ host was unreliable.
   `record.env`. Slice 1 had two writes (render, then mutate env)
   racing and the env got out of sync — fixed.
 
-The other subcommands exist in the parser but `unimplemented!()` —
-they land in slices 3–10 in the order agreed at design time.
+## What works in slice 3
+
+- `aim list` — table with KEY / INTEGRATED / SIZE / SHA256 /
+  INSTALLED columns. Empty state prints "no AppImages installed yet".
+  `--integrated-only` filters to integrated rows.
+- `aim info <id>` — full record dump: version, sha (compact
+  `2e255…30b7` form), size (human-readable + bytes), integration
+  flag, cache path, `.desktop` path, bin link, icon path, source,
+  install timestamp + relative time, per-app env/exec-args/comment/
+  categories if any.
+- `--json` on both: structured output for piping into `jq`.
+- Bug fixed: `Layout::with_home` now also redirects
+  `$XDG_DATA_HOME/applications/` for `.desktop` files. Slice 1
+  tests were silently passing because `desktop_file()` reached into
+  the real `$HOME` instead of the test tempdir.
+
+### Timestamp formatting
+
+We compute timestamps ourselves (no `chrono` dep) with Howard
+Hinnant's `days_from_civil` algorithm. Tests cover boundary years
+(1970, 2000).
 
 ## Storage layout
 

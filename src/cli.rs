@@ -13,6 +13,7 @@ use crate::error::Result;
 use crate::install::{self, InstallRequest};
 use crate::integrate;
 use crate::paths::Layout;
+use crate::show::{self, InfoOpts, ListOpts};
 use crate::state::Source;
 
 #[derive(Debug, Parser)]
@@ -154,8 +155,18 @@ pub fn run(cli: Cli) -> Result<()> {
     match cli.cmd {
         Cmd::Install(args) => cmd_install(args, &layout),
         Cmd::Remove(_) => unimplemented!("remove lands in slice 4"),
-        Cmd::List(_) => unimplemented!("list lands in slice 3"),
-        Cmd::Info(_) => unimplemented!("info lands in slice 3"),
+        Cmd::List(args) => show::list(
+            ListOpts {
+                integrated_only: args.integrated_only,
+                json: args.json,
+            },
+            &layout,
+        ),
+        Cmd::Info(args) => show::info(
+            &args.target,
+            InfoOpts { json: args.json },
+            &layout,
+        ),
         Cmd::Run(_) => unimplemented!("run lands in slice 5"),
         Cmd::Integrate(args) => {
             integrate::integrate(&args.target, &layout)?;

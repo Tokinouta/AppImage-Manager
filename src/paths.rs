@@ -17,6 +17,7 @@ use crate::error::{Error, Result};
 
 /// Resolved on-disk layout. All paths are absolute.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Layout {
     /// `~/.config/aim/`
     pub config_dir: PathBuf,
@@ -30,6 +31,9 @@ pub struct Layout {
     pub state_file: PathBuf,
     /// `~/.local/bin/`
     pub bin_dir: PathBuf,
+    /// `$XDG_DATA_HOME/applications/` (relative to `home` when
+    /// constructed via `with_home`).
+    pub apps_root_dir: PathBuf,
 }
 
 impl Layout {
@@ -52,6 +56,7 @@ impl Layout {
         let apps_dir = data_dir.join("apps");
         let icons_dir = data_dir.join("icons");
         let state_file = data_dir.join("state.toml");
+        let apps_root_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
 
         Self {
             config_dir,
@@ -60,6 +65,7 @@ impl Layout {
             icons_dir,
             state_file,
             bin_dir,
+            apps_root_dir,
         }
     }
 
@@ -74,6 +80,9 @@ impl Layout {
         let apps_dir = data_dir.join("apps");
         let icons_dir = data_dir.join("icons");
         let state_file = data_dir.join("state.toml");
+        // The XDG apps dir sits next to `data_dir` in the `share/`
+        // tree. `with_home` mirrors the exact same relative layout.
+        let apps_root_dir = home.join(".local").join("share");
 
         Self {
             config_dir,
@@ -82,6 +91,7 @@ impl Layout {
             icons_dir,
             state_file,
             bin_dir,
+            apps_root_dir,
         }
     }
 
@@ -102,8 +112,7 @@ impl Layout {
     /// Desktop file location (under `$XDG_DATA_HOME/applications/`).
     #[must_use]
     pub fn desktop_file(&self, id_version: &str) -> PathBuf {
-        let apps_root = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        apps_root
+        self.apps_root_dir
             .join("applications")
             .join(format!("aim-{}.desktop", sanitize_id(id_version)))
     }
