@@ -200,6 +200,62 @@ function now returns `(String, Vec<Asset>)`), and add
 `#[serde(rename_all = "camelCase")]` to `GhCliRelease` so the
 field is read as `tagName` (gh's output) instead of `tag_name`.
 
+## What works in slice 10
+
+- `aim verify <id> [--json]` — re-hash the cached AppImage against
+  the recorded SHA-256. On mismatch prints both hashes and returns
+  exit code 1 with `aim::error::invalid_target`. The streaming
+  SHA-256 helper was extracted to `crate::hash::hash_file` so
+  install, verify, and upgrade all share one implementation.
+- `aim upgrade <id>` — for `gh:` installs only. Resolves the
+  latest release via `gh::resolve_release`, compares versions,
+  downloads the new asset, identifies the new AppImage
+  (`AppImage.yml` → filename fallback), then:
+    1. Atomic cache replacement (tempfile_in + chmod + persist).
+    2. Re-extract the icon (the new AppImage may have a different
+       image).
+    3. Re-render the `.desktop` and bin symlink under the new key
+       when integrated.
+    4. Drop the old `.desktop`, bin symlink, and the old
+       `apps/<old_key>/` directory.
+    5. Update `state.toml`: remove the old record, insert the new
+       one with the same `source`, `integrated` flag, and per-app
+       overrides (`env`, `extra_exec_args`, `comment`,
+       `categories`).
+  - On `up-to-date`: prints "already up-to-date (<tag>)", no-op.
+  - On `ahead of upstream`: refuses (no downgrade).
+  - On unparseable versions: errors with a clear message; does
+    not download.
+  - On `AlreadyInstalled` collision (new key already in state):
+    errors; user must `aim remove <new>` first.
+
+### Edge case: state key vs. version field
+
+The BTreeMap key is `id@version` and the record's `version` field
+should match. If they disagree (state corruption), `aim upgrade`
+will refuse: e.g. upgrading `marktext-linux@0.22.0` (whose
+record says `version = "0.21.0"`) to upstream 0.22.0 will hit
+the AlreadyInstalled check because the new key would collide with
+the old one. The user can fix this by editing the state, or by
+`aim remove` + reinstall.
+
+### End-to-end upgrade verified
+
+1. Faked state: key=`marktext-linux@0.21.0`, version=`0.21.0`.
+2. `aim check` → "upgrade available".
+3. `aim upgrade marktext-linux@0.21.0`:
+   - resolves v0.22.0 from upstream
+   - downloads the new asset
+   - identifies the new AppImage (id=`marktext-linux`,
+     version=`0.22.0`)
+   - atomic cache replace
+   - re-renders `.desktop` + bin symlink
+   - drops old `apps/marktext-linux@0.21.0/`
+   - state now has `marktext-linux@0.22.0` with `integrated =
+     true` and a fresh `installed_at_secs`
+4. `aim verify` → "OK"
+5. `aim check` → "up-to-date"
+
 ## Storage layout
 
 ```

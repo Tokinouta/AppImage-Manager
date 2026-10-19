@@ -4,8 +4,8 @@
 //! consumed by both the CLI binary and integration tests. The subcommand
 //! dispatch lives in [`cli`].
 
-pub mod cli;
 pub mod check;
+pub mod cli;
 pub mod config;
 pub mod desktop;
 pub mod doctor;
@@ -13,6 +13,7 @@ pub mod download;
 pub mod error;
 pub mod gc;
 pub mod gh;
+pub mod hash;
 pub mod health;
 pub mod identity;
 pub mod icon;
@@ -25,6 +26,8 @@ pub mod run;
 pub mod show;
 pub mod staging;
 pub mod state;
+pub mod upgrade;
+pub mod verify;
 
 // Re-exports for convenience at the top of the crate.
 pub use error::{Error, Result};

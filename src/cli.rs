@@ -22,6 +22,8 @@ use crate::remove;
 use crate::run;
 use crate::show::{self, InfoOpts, ListOpts};
 use crate::state::Source;
+use crate::upgrade;
+use crate::verify;
 
 #[derive(Debug, Parser)]
 #[command(name = "aim", about = "AppImage manager", version)]
@@ -178,6 +180,10 @@ pub struct VerifyArgs {
     /// The `id@version` to verify.
     #[arg(required = true)]
     pub target: String,
+
+    /// Emit JSON.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -240,8 +246,12 @@ pub fn run(cli: Cli) -> Result<()> {
             doctor::DoctorOpts { json: args.json },
             &layout,
         ),
-        Cmd::Verify(_) => unimplemented!("verify lands in slice 10"),
-        Cmd::Upgrade(_) => unimplemented!("upgrade lands in slice 10"),
+        Cmd::Verify(args) => verify::run(
+            &args.target,
+            verify::VerifyOpts { json: args.json },
+            &layout,
+        ),
+        Cmd::Upgrade(args) => upgrade::run(&args.target, &layout),
     }
 }
 

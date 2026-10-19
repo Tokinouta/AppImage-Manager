@@ -12,7 +12,10 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use sha2::{Digest, Sha256};
+// SHA-256 streaming was extracted to `crate::hash` in slice 10 so
+// that `verify` and `upgrade` can reuse it. The local helper below
+// is kept as a thin re-export for any in-tree callers that still
+// import it by its old name.
 
 use crate::desktop;
 use crate::error::{Error, Result};
@@ -157,30 +160,11 @@ pub fn run(req: InstallRequest, layout: &Layout) -> Result<InstallResult> {
     })
 }
 
-/// SHA-256 + size of a file, streamed in 64 KiB chunks. The buffer is
-/// `Vec`-allocated on the heap to avoid a `clippy::large_stack_array`
-/// warning on the 64 KiB literal.
+/// SHA-256 + size of a file, streamed in 64 KiB chunks. Re-export of
+/// [`crate::hash::hash_file`] kept as a module-local alias for
+/// readability of the install pipeline.
 fn hash_file(path: &Path) -> Result<(String, u64)> {
-    use std::io::Read;
-    let mut file = std::fs::File::open(path).map_err(|source| Error::Path {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let mut hasher = Sha256::new();
-    let mut buf = vec![0_u8; 64 * 1024];
-    let mut total: u64 = 0;
-    loop {
-        let n = file.read(&mut buf).map_err(|source| Error::Path {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-        total += n as u64;
-    }
-    Ok((hex::encode(hasher.finalize()), total))
+    crate::hash::hash_file(path)
 }
 
 /// Test-only helper, exposed so other test modules can re-use the
