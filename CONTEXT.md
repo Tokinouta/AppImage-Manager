@@ -328,6 +328,47 @@ Existing installs needed their icons moved from
 `~/.local/share/icons/hicolor/...`. The user's siyuan install
 was migrated as part of this fix.
 
+Existing installs needed their icons moved from
+`~/.local/share/hicolor/...` (the previous broken location) to
+`~/.local/share/icons/...`. The user's siyuan install
+was migrated as part of this fix.
+
+## Bug fix: icon picker grabbed a tutorial asset
+
+Slice 1 picked the largest PNG in the extracted tree. For
+`siyuan-3.8.7` that grabbed a 358 KB tutorial screenshot from
+`resources/guide/.../custom-icon1-...png` instead of the real
+5 KB M logo at `usr/share/icons/hicolor/512x512/apps/siyuan.png`.
+
+Real AppImages ship icons in conventional locations:
+
+1. `.DirIcon` — the freedesktop canonical name for a directory
+   icon, almost always a symlink into the hicolor tree.
+2. The hicolor tree itself
+   (`usr/share/icons/hicolor/<size>x<size>/apps/<id>.png`).
+3. Top-level `<id>.png`, `icon.png`, `logo.png`,
+   `icon-large.png`.
+
+Slice 11 rewrites `icon::pick_best_icon` to walk this
+precedence chain. The final fallback still picks the largest
+PNG, but skips any path containing `/guide/`, `/tutorial/`,
+`/help/`, `/docs/`, `/doc/`, or `/screenshots/` — the
+directories that typically hold tutorial assets dwarfing the
+real icon.
+
+Tests: 7 new in `icon::tests` (picks_diricon_first,
+picks_hicolor_when_no_diricon,
+picks_largest_hicolor_size_available,
+picks_top_level_when_no_diricon_or_hicolor,
+fallback_skips_tutorial_directory, returns_none_when_no_pngs,
+is_in_guide_dir_recognises_markers). 93 unit tests, all green.
+
+End-to-end verified: `siyuan@3.8.7` reinstalled with the new
+logic; the extracted icon at
+`~/.local/share/icons/hicolor/512x512/apps/aim-siyuan.png`
+now has md5 `5f3edced842be3554f95ce27b4714c4a` — same as the
+hicolor tree's `siyuan.png`. File size 5625 bytes, 512×512 RGBA.
+
 ## Storage layout
 
 ```
