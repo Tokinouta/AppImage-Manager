@@ -652,3 +652,62 @@ appstreamcli refresh-cache      # optional
 
 If still stale: restart the file manager (`dolphin` for KDE,
 `nautilus` for GNOME, `thunar` for XFCE) or log out / in.
+
+### Bug: `sh -c "AppImage"` swallowed file arguments
+
+After the `%F` placeholder was added, double-clicking an xlsx
+*launched* DesktopEditors but *never opened the file* — the
+start screen appeared every time.
+
+Root cause: the Exec line was wrapped in `sh -c`:
+
+```
+Exec=env AIM_INTEGRATED=1 sh -c "/path/to/AppImage" %F
+```
+
+After the DE substituted `%F` and ran the line:
+
+```
+env AIM_INTEGRATED=1 sh -c "/path/to/AppImage" /home/mi/foo.xlsx
+```
+
+But `sh -c CMD ARG` makes ARG the shell's `$0`, not an extra
+argument to CMD. The shell parsed the command string as
+`/path/to/AppImage` and exec'd it with an empty argv. The
+file path disappeared. The AppImage launched with no args,
+showed the start screen, and silently waited.
+
+Proof (run in any shell):
+
+```
+$ sh -c 'echo "argv count: $#  argv[0]: $0  argv[1]: $1"' /file.xlsx
+argv count: 0  argv[0]: /file.xlsx  argv[1]:
+```
+
+`argv count: 0` — the file is not a positional argument, it's
+the shell's own `$0`.
+
+Fix: drop the `sh -c` wrapper. The Exec line is just
+`env … /AppImage %F`; `env VAR=val command args…` exec's
+`command` with `args…` as its argv. The AppImage then receives
+the file path as `argv[1]`, and the type-2 runtime
+substitutes `%F` into the embedded `.desktop`'s `Exec=`
+field, and the actual app's wrapper script propagates the
+file down to its main binary.
+
+End-to-end:
+
+```
+$ tr '\0' ' ' < /proc/<DesktopEditors-pid>/cmdline
+./DesktopEditors /home/mi/Downloads/...xlsx
+```
+
+The file is in argv. The DesktopEditors process spins at
+~95% CPU and `~/.local/share/onlyoffice/desktopeditors/data/
+recents.xml` gets touched — OnlyOffice tracks the open file
+in its recents list, which only happens for files actually
+opened (not for the start screen).
+
+Tests: existing Exec-line assertions updated to the new
+format; no new tests added (the format check already locks
+the new format in). 115 unit + 4 integration green.

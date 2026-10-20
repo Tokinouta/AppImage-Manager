@@ -60,16 +60,25 @@ pub fn render(record: &AppRecord, appimage_path: &Path) -> String {
     // file type. If the user's `extra_exec_args` already contains
     // a placeholder (uncommon but possible), respect it as-is;
     // otherwise append `%F` (multiple file paths) at the end.
+    //
+    // We deliberately do NOT wrap the AppImage in `sh -c "..."`.
+    // `sh -c CMD ARG` makes ARG become the shell's `$0`, NOT an
+    // argument to CMD. So `env ... sh -c "/AppImage" file.xlsx`
+    // ran the AppImage with an empty argv (the file path was
+    // swallowed as `$0`), and double-click produced the start
+    // screen with no file loaded. Using `env ... /AppImage %F`
+    // instead makes the file(s) actual argv[1..] of the AppImage,
+    // which is what the AppImage runtime / type-2 wrapper expects.
     let user_args_already_has_placeholder =
         extra.contains("%f") || extra.contains("%F") || extra.contains("%u") || extra.contains("%U");
-    let shell_exec = if extra.is_empty() {
+    let exec_tail = if extra.is_empty() {
         format!("\"{appimage_path_str}\" %F")
     } else if user_args_already_has_placeholder {
         format!("\"{appimage_path_str}\" {extra}")
     } else {
         format!("\"{appimage_path_str}\" {extra} %F")
     };
-    let _ = writeln!(out, "Exec=env {env_str} sh -c {shell_exec}");
+    let _ = writeln!(out, "Exec=env {env_str} {exec_tail}");
 
     // Icon must be the *theme name* without an extension to work with
     // hicolor index lookup.
@@ -131,9 +140,13 @@ mod tests {
         assert!(body.contains("Comment=A foo app"));
         assert!(body.contains("Categories=Utility"));
         assert!(body.contains("MimeType=text/plain;application/x-foo"));
-        // Exec line: extra args + the file placeholder the DE
-        // needs to forward double-clicked files.
-        assert!(body.contains("Exec=env AIM_INTEGRATED=0 WAYLAND=1 sh -c \"/cache/foo@1.0.0/AppImage\" --no-sandbox %F"));
+        // Exec line: env vars, then the AppImage, then extra args +
+        // the file placeholder the DE needs to forward double-
+        // clicked files. Critically: NO `sh -c` wrapper, because
+        // `sh -c CMD ARG` makes ARG the shell's $0 and drops it on
+        // the floor; the AppImage would otherwise launch with no
+        // file argument and the user gets the start screen.
+        assert!(body.contains("Exec=env AIM_INTEGRATED=0 WAYLAND=1 \"/cache/foo@1.0.0/AppImage\" --no-sandbox %F"));
         assert!(body.contains("Icon=aim-foo"));
         assert!(body.contains("StartupWMClass=foo"));
     }
@@ -169,11 +182,11 @@ mod tests {
         r.categories.clear();
         r.icon_path = None;
         let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
-        // Even with no envs and no extra args, we always wrap in
-        // `env ... sh -c ...` so the layout of the Exec line stays
-        // stable for diffing. And we always append `%F` so the DE
-        // forwards double-clicked file paths.
-        assert!(body.contains("Exec=env AIM_INTEGRATED=0 sh -c \"/cache/foo@1.0.0/AppImage\" %F"));
+        // Even with no envs and no extra args, we always wrap with
+        // `env ...` so the layout of the Exec line stays stable
+        // for diffing. And we always append `%F` so the DE forwards
+        // double-clicked file paths.
+        assert!(body.contains("Exec=env AIM_INTEGRATED=0 \"/cache/foo@1.0.0/AppImage\" %F"));
         assert!(!body.contains("Icon="));
         assert!(!body.contains("Comment="));
     }
