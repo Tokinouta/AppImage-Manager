@@ -626,3 +626,29 @@ Exec-line assertions updated. 113 unit + 4 integration green.
 End-to-end: `aim integrate DesktopEditors` re-renders the
 desktop file; `desktop-file-validate` passes; double-clicking
 an xlsx now forwards the file path.
+
+### KDE cache caveat
+
+After the `.desktop` fix, on KDE the file-manager still served
+the stale `.desktop` until `kbuildsycoca6 --noincremental` was
+run. KDE's `ksycoca` (System Configuration Cache) is the DE's
+own index of `.desktop` files and is independent of
+`mimeinfo.cache`. Until it's rebuilt, KDE continues to use the
+old (placeholder-less) Exec line.
+
+A future polish slice could have `aim integrate` /
+`aim mime add` shell out to `kbuildsycoca6` (KDE 6) or
+`kbuildsycoca5` (KDE 5) automatically. For now the user has
+to know the trick.
+
+Recipe after editing `.desktop`:
+
+```
+kbuildsycoca6 --noincremental   # KDE 6
+# or kbuildsycoca5 --noincremental   # KDE 5
+update-desktop-database ~/.local/share/applications
+appstreamcli refresh-cache      # optional
+```
+
+If still stale: restart the file manager (`dolphin` for KDE,
+`nautilus` for GNOME, `thunar` for XFCE) or log out / in.
