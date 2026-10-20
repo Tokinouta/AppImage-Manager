@@ -21,6 +21,7 @@ pub mod install;
 pub mod integrate;
 pub mod output;
 pub mod paths;
+pub mod reinstall;
 pub mod remove;
 pub mod run;
 pub mod show;

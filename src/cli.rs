@@ -18,6 +18,7 @@ use crate::gh;
 use crate::install::{self, InstallRequest};
 use crate::integrate;
 use crate::paths::Layout;
+use crate::reinstall;
 use crate::remove;
 use crate::run;
 use crate::show::{self, InfoOpts, ListOpts};
@@ -66,6 +67,9 @@ pub enum Cmd {
     Verify(VerifyArgs),
     /// Replace an installed AppImage with a newer release.
     Upgrade(UpgradeArgs),
+    /// Re-install an AppImage from its surviving cache (after a default
+    /// `aim remove`).
+    Reinstall(ReinstallArgs),
 }
 
 #[derive(Debug, Args)]
@@ -193,6 +197,17 @@ pub struct UpgradeArgs {
     pub target: String,
 }
 
+#[derive(Debug, Args)]
+pub struct ReinstallArgs {
+    /// The `id` (or `id@version`) whose cache to reinstall from.
+    #[arg(required = true)]
+    pub target: String,
+
+    /// Skip rendering the `.desktop` and bin symlink.
+    #[arg(long)]
+    pub no_integrate: bool,
+}
+
 /// Dispatch the parsed command. Each match arm calls the relevant
 /// op module. Errors propagate via `?` and are formatted as `miette`
 /// reports in `main`.
@@ -252,6 +267,11 @@ pub fn run(cli: Cli) -> Result<()> {
             &layout,
         ),
         Cmd::Upgrade(args) => upgrade::run(&args.target, &layout),
+        Cmd::Reinstall(args) => reinstall::run(
+            &args.target,
+            reinstall::ReinstallOpts { no_integrate: args.no_integrate },
+            &layout,
+        ),
     }
 }
 

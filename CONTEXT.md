@@ -408,6 +408,57 @@ gone). The cached AppImage binary at
 Existing stale `aim-nvim.png` and `aim-marktext.png` orphans
 (from before the fix) were removed by hand.
 
+## Feature: `aim reinstall <id>`
+
+After a default `aim remove` (no `--purge`), the cached
+AppImage binary survives at `apps/<id@version>/AppImage` but
+the state record is gone. Without a reinstall command, the
+user would either re-download via `aim install --force
+gh:owner/repo` or hand-feed the cached path to `aim install`,
+neither of which is friendly.
+
+Slice 12 adds `aim reinstall <target>` that wires the surviving
+file back through the install pipeline. Two bugs caught while
+implementing:
+
+- The cached file is named `AppImage` (per install's atomic
+  cache layout). Identity parsing falls back to filename stem
+  when the AppImage has no embedded `AppImage.yml`, so passing
+  the cache path verbatim identifies as `id="AppImage"`.
+  Workaround: stage a copy with a meaningful basename before
+  the install. When the original key carries a version, use
+  `<id>-<version>.AppImage` (matches typical GitHub release
+  asset names) so identity can recover the version via
+  filename parsing too.
+
+- `resolve_cached_key` had to handle both `apps/<id>/` (when
+  the AppImage had no identifiable version) and
+  `apps/<id>@<version>/` directories. With one match, use it;
+  with multiple, error and ask the user to disambiguate.
+
+Tests: 6 new in `reinstall::tests`
+(resolve_cached_key_with_at_returns_verbatim,
+resolve_cached_key_with_no_match_errors,
+resolve_cached_key_with_multiple_matches_errors,
+resolve_cached_key_with_versioned_match_prefers_at_form,
+reinstall_after_default_remove_recovers_state,
+reinstall_with_no_cache_errors_clearly,
+reinstall_after_purge_fails). 102 unit + 4 integration green
+total.
+
+End-to-end verified on the user's siyuan@3.8.7: removed,
+reinstalled from cache, key + version preserved
+(`siyuan@3.8.7`), icon md5 matches the hicolor tree's
+`siyuan.png` (`5f3edced…`), `.desktop` file references the
+correct cached AppImage path.
+
+Known limitation: per-app overrides (`env`, `extra_exec_args`,
+`comment`, `categories`) are NOT preserved across
+remove/reinstall — they live in the state record which is
+deleted by `aim remove`. A future polish slice could keep a
+backup `state.toml.bak` or a `removed/` section in state
+that `reinstall` consults.
+
 ## Storage layout
 
 ```
