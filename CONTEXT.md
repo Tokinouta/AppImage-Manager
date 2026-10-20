@@ -459,7 +459,34 @@ deleted by `aim remove`. A future polish slice could keep a
 backup `state.toml.bak` or a `removed/` section in state
 that `reinstall` consults.
 
-## Storage layout
+## Bug: stale `~/.cargo/bin/aim` re-introduced the wrong path
+
+After the icons-dir fix landed, the user reported that a new
+install (`DesktopEditors`) put its icon at
+`~/.local/share/hicolor/512x512/apps/aim-DesktopEditors.png`
+— missing the `icons/` segment again.
+
+Root cause: the user had `~/.cargo/bin/aim` installed via
+`cargo install --path` from a binary built on Oct 19 21:10 —
+*between* the second icons fix
+(`icons_dir = dirs::data_dir()`, no `icons/` segment) and the
+third fix (added the `icons/` segment). The binary didn't
+carry the third fix.
+
+Fix: rebuilt release and reinstalled into `~/.cargo/bin/`
+(`cargo install --path . --bin aim --force`). Verified with a
+clean HOME: the new binary places icons at
+`.../.local/share/icons/hicolor/...` ✓.
+
+Lesson: when fixing the icons path, any out-of-tree install
+of `aim` needs to be rebuilt for the fix to land. There is
+no in-band way to detect this; a future polish slice could
+add a `--check-path` self-check that compares `aim`'s
+expected icon dir against what the OS theme lookup actually
+consults.
+
+The user's stale `aim-DesktopEditors.png` icon was migrated
+by hand (move + state re-render + theme cache rebuild).
 
 ```
 ~/.config/aim/config.toml            ← system defaults (slice 1: empty)
