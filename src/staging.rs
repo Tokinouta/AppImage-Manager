@@ -9,6 +9,7 @@
 //! destination via [`install_into`] which performs an atomic rename.
 
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
@@ -150,6 +151,15 @@ pub fn atomic_swap(src: &Path, dst: &Path) -> Result<()> {
 /// Write `bytes` to `dst` via a temp file in the same directory, then
 /// atomically rename into place. Prevents readers from observing
 /// partially-written files.
+///
+/// The resulting file is mode 0644 — readable by everyone. This
+/// matters for `.desktop` files: per the freedesktop Desktop
+/// Entry Spec, they MUST be world-readable, and KDE's loader
+/// silently rejects files that aren't (which manifests as "double-
+/// click does nothing"). 0644 is also the right default for
+/// `state.toml` and `mimeapps.list` — both are config files
+/// with no sensitive content. For a tighter mode, callers can
+/// chmod after the call.
 pub fn atomic_write(dst: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent).map_err(|source| Error::Path {
@@ -177,6 +187,14 @@ pub fn atomic_write(dst: &Path, bytes: &[u8]) -> Result<()> {
         path: tmp.path().to_path_buf(),
         source,
     })?;
+    if let Err(source) = tmp.as_file().set_permissions(
+        std::fs::Permissions::from_mode(0o644),
+    ) {
+        return Err(Error::Path {
+            path: tmp.path().to_path_buf(),
+            source,
+        });
+    }
     match tmp.persist(dst) {
         Ok(_) => Ok(()),
         Err(e) => Err(Error::Path {
@@ -204,6 +222,53 @@ pub fn symlink(target: &Path, link: &Path) -> Result<()> {
         source,
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn from_mode(m: u32) -> std::fs::Permissions {
+        std::fs::Permissions::from_mode(m)
+    }
+
+    fn fresh_tmp() -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("aim-staging-{nanos}"));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn atomic_write_creates_world_readable_file() {
+        // KDE's .desktop loader silently rejects files that
+        // aren't world-readable, which manifested as "double-
+        // click does nothing" on the user's install. Lock in
+        // 0644 here so a future refactor of tempfile defaults
+        // can't reintroduce the bug.
+        let dir = fresh_tmp();
+        let dst = dir.join("foo.desktop");
+        atomic_write(&dst, b"[Desktop Entry]\n").unwrap();
+        let mode = std::fs::metadata(&dst).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o644, "atomic_write must produce 0644; got {mode:o}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn atomic_write_replaces_existing_file() {
+        let dir = fresh_tmp();
+        let dst = dir.join("state.toml");
+        atomic_write(&dst, b"first").unwrap();
+        atomic_write(&dst, b"second").unwrap();
+        let body = std::fs::read_to_string(&dst).unwrap();
+        assert_eq!(body, "second");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
 
 /// Remove a file, link, or empty directory. Missing paths are
