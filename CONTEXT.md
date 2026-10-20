@@ -369,6 +369,45 @@ logic; the extracted icon at
 now has md5 `5f3edced842be3554f95ce27b4714c4a` — same as the
 hicolor tree's `siyuan.png`. File size 5625 bytes, 512×512 RGBA.
 
+## Bug fix: `aim remove` left icons orphaned
+
+Two bugs in `aim remove` conspired to leave icons behind.
+
+**Bug A — design**: without `--purge`, the icon file was kept
+even though the `.desktop` file (its only consumer) was deleted.
+User saw `removed nvim (cache preserved)` and reasonably
+expected "cache" to mean just the AppImage binary; the icon
+lingered with no `.desktop` reference. Fixed by removing the
+icon unconditionally — it's part of the install record, not
+part of the cache. With `--purge`, both go (plus the AppImage
+binary); without, only the AppImage binary stays.
+
+**Bug B — filename mismatch in `remove_icons`**: the cleanup
+function built the filename from the full `key` (`nvim@0.10.0`),
+producing `aim-nvim@0.10.0.png`. But the slice-1 fix changed
+`paths::icon_path` to strip `@version` (so the `.desktop`'s
+`Icon=aim-nvim` matches), so the actual file is `aim-nvim.png`.
+`remove_icons` was looking for a name that didn't exist on
+disk — that's why even `--purge` was leaving icons behind.
+Now `remove_icons` uses `id_for_key(key)` to strip the
+version, matching what `icon_path` writes.
+
+Tests: 2 new in `remove::tests`:
+- `remove_default_matches_id_based_icon_filename` — locks in
+  the alignment between `paths::id_for_key` and the icon file
+  on disk.
+- The existing `remove_default_preserves_cache` now also plants
+  an icon and asserts it's gone after default remove.
+94 unit tests, all green.
+
+End-to-end verified: installed nvim with a fake AppImage, ran
+`aim remove nvim` (no --purge). Icon was correctly removed
+(`~/.local/share/icons/hicolor/512x512/apps/aim-nvim.png`
+gone). The cached AppImage binary at
+`~/.local/share/aim/apps/nvim/AppImage` survived, as designed.
+Existing stale `aim-nvim.png` and `aim-marktext.png` orphans
+(from before the fix) were removed by hand.
+
 ## Storage layout
 
 ```

@@ -1,12 +1,17 @@
 //! `aim remove` — uninstall an AppImage.
 //!
-//! Behaviour (per spec, agreed at design time):
+//! Behaviour:
 //!
-//! - Default: drop the state record, remove the `.desktop` file and
-//!   bin symlink. The cached AppImage stays on disk and becomes an
-//!   "orphaned file" that a future `aim gc` (slice 6) can sweep.
-//! - `--purge`: also delete the cached AppImage and the DirIcon
-//!   under `icons/hicolor/`.
+//! - Default: drop the state record, the `.desktop` file, the bin
+//!   symlink, AND the icon. The icon has no consumer once the
+//!   `.desktop` is gone (and the .desktop is gone the moment we
+//!   drop the install record), so it would just be an orphan.
+//!   The cached AppImage stays on disk so a future `aim install
+//!   <path>` is fast — that's what "cache" refers to in the user-
+//!   facing message.
+//! - `--purge`: also delete the cached AppImage. With nothing left
+//!   on disk except what's in `data_dir/downloads/` (out of scope
+//!   for slice 11), the install is fully gone.
 //!
 //! Multiple targets per invocation are processed in the order given;
 //! the first failure aborts the run (no partial cleanup).
@@ -38,17 +43,16 @@ pub fn run(targets: &[String], purge: bool, layout: &Layout) -> Result<()> {
         remove_any(&layout.desktop_file(&key));
         remove_any(&layout.bin_link(&key));
 
-        // 2. With --purge, also drop the cache and the icon. The cache
-        //    directory is taken entirely; that mirrors `install`'s
-        //    layout (one app image per dir).
+        // 2. The icon is part of the install, not part of the
+        //    cache. Once the .desktop is gone, the icon has no
+        //    consumer (no .desktop line references it any more).
+        //    Removing it unconditionally keeps a default `remove`
+        //    from leaving invisible-to-launchers but still-on-disk
+        //    leftovers. `--purge` removes the rest of the cache.
+        remove_icons(&layout, &key);
         if purge {
             let app_dir = layout.app_dir(&key);
             remove_dir_all_safe(&app_dir);
-            // The icon lives at `icons/hicolor/<size>/apps/aim-<id>.png`
-            // but per spec a single AppImage can install only one icon
-            // (slice 1). We don't know which size; remove the matching
-            // hicolor/apps/aim-<id>.png anywhere under the icons dir.
-            remove_icons(&layout, &key);
         }
 
         // 3. Drop the state record.
@@ -58,10 +62,12 @@ pub fn run(targets: &[String], purge: bool, layout: &Layout) -> Result<()> {
 
     state.save(&layout.state_file)?;
     // Print a one-liner per removal so scripting/automation has
-    // structured output.
+    // structured output. "cache" refers to the cached AppImage
+    // binary; the icon is always cleaned up by `remove`, with or
+    // without `--purge`.
     for k in &removed {
         if purge {
-            println!("removed {k} (cache + icon purged)");
+            println!("removed {k} (cache purged)");
         } else {
             println!("removed {k} (cache preserved)");
         }
@@ -81,6 +87,11 @@ fn remove_dir_all_safe(path: &Path) {
 /// Always best-effort — at worst a stale icon remains and `gc`
 /// cleans it later.
 fn remove_icons(layout: &Layout, key: &str) {
+    // The filename uses just the id (per the `id_for_key` rule in
+    // `paths`), not the full `id@version` key. Use `id_for_key`
+    // so a record keyed `nvim@0.10.0` matches the file
+    // `aim-nvim.png` on disk.
+    let id = crate::paths::id_for_key(key);
     let apps_root = layout.icons_dir.join("hicolor");
     // The icon may sit at multiple sizes; we only installed one in
     // slice 1 but be defensive. We can't ask "where exactly is it"
@@ -91,7 +102,7 @@ fn remove_icons(layout: &Layout, key: &str) {
         for size_entry in it.flatten() {
             if size_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let dir = size_entry.path().join("apps");
-                let candidate = dir.join(format!("aim-{}.png", key.replace('/', "_")));
+                let candidate = dir.join(format!("aim-{}.png", id.replace('/', "_")));
                 if candidate.exists() {
                     let _ = std::fs::remove_file(&candidate);
                 }
@@ -156,6 +167,13 @@ mod tests {
         assert!(layout.desktop_file(&key).is_file());
         assert!(layout.bin_link(&key).is_symlink());
 
+        // Plant an icon so we can assert default removes it.
+        let icon = layout.icon_path(&key, 512);
+        if let Some(parent) = icon.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&icon, b"fakepng").unwrap();
+
         run(&["Foo".to_string()], false, &layout).unwrap();
 
         // Cache survives.
@@ -163,9 +181,49 @@ mod tests {
         // Integration artefacts gone.
         assert!(!layout.desktop_file(&key).exists());
         assert!(!layout.bin_link(&key).exists());
+        // Icon gone (default remove cleans it up; without an
+        // install record + .desktop file the icon has no consumer).
+        assert!(
+            !icon.exists(),
+            "icon should be removed even without --purge"
+        );
         // State record gone.
         let state_after = State::load(&layout.state_file).unwrap();
         assert!(state_after.apps.is_empty());
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn remove_default_matches_id_based_icon_filename() {
+        // Regression for the bug where remove_icons() used the full
+        // key (`foo@1.0.0`) to construct the filename, but the
+        // actual file is named with just the id (`foo`) per the
+        // slice-1 id_for_key rule. Without --purge, the icon file
+        // was left orphaned.
+        let (layout, home) = fresh_layout();
+        install_one(&layout, &home, "Foo.AppImage", true);
+
+        let state = State::load(&layout.state_file).unwrap();
+        let (key, _) = state.lookup("Foo").unwrap();
+        // The key has no @version because the fake AppImage has
+        // none. Verify directly that id_for_key matches the
+        // installed filename stem.
+        let id = crate::paths::id_for_key(&key);
+        let icon = layout.icon_path(&key, 512);
+        if let Some(parent) = icon.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let stem = icon.file_stem().unwrap().to_string_lossy().into_owned();
+        let expected_stem = format!("aim-{id}");
+        assert_eq!(stem, expected_stem);
+        fs::write(&icon, b"x").unwrap();
+
+        run(&["Foo".to_string()], false, &layout).unwrap();
+        assert!(
+            !icon.exists(),
+            "icon at {icon:?} should be removed by default remove"
+        );
 
         fs::remove_dir_all(&home).ok();
     }

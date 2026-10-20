@@ -75,7 +75,7 @@ aim gc --yes
 | Command | Notes |
 |---------|-------|
 | `aim install <source>` | `source` is a local path, an `http(s)://` URL, or `gh:owner/repo[@ver]`. `--name <ID>` overrides the derived id. `--no-integrate` skips `.desktop` + bin symlink creation. `--force` overwrites an existing install. |
-| `aim remove <id...>` | Drops the state record and integration artefacts. `--purge` also deletes the cached AppImage. Default keeps the cache ("for traceability"); use `aim gc` to clean later. |
+| `aim remove <id...>` | Drops the state record, integration artefacts, and the icon. The cached AppImage stays so a future `aim install` is fast — that's what "cache preserved" refers to. `--purge` also deletes the cached AppImage. |
 | `aim list [--integrated-only] [--json]` | Tabular view of all installs. |
 | `aim info <id> [--json]` | Detailed view (sha256, size, paths, source, install time, per-app overrides). `--edit` is recognised but not yet wired. |
 | `aim run <id> [-- <args...>]` | `exec()`s the cached AppImage, forwarding `--` to it. |
