@@ -20,7 +20,7 @@
 use crate::error::{Error, Result};
 use crate::install::{self, InstallRequest};
 use crate::paths::{self, Layout};
-use crate::state::{Source, State};
+use crate::state::Source;
 use crate::staging::StagingDir;
 
 #[derive(Debug, Clone, Default)]
@@ -315,6 +315,7 @@ mod tests {
             extra_exec_args: vec![],
             comment: None,
             categories: vec![],
+            mime_types: vec![],
             installed_at_secs: 0,
         }
     }

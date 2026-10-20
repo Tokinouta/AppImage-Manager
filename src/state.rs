@@ -140,6 +140,13 @@ pub struct AppRecord {
     /// Categories override (taken from `.desktop`).
     #[serde(default)]
     pub categories: Vec<String>,
+    /// MIME types this install advertises handling. Rendered as
+    /// `MimeType=` in the `.desktop` file when non-empty, which is
+    /// the prerequisite for `xdg-mime default` and file-manager
+    /// "Open With" to consider the install as a candidate.
+    /// Managed via `aim mime add/remove`.
+    #[serde(default)]
+    pub mime_types: Vec<String>,
     /// Install timestamp (seconds since epoch).
     pub installed_at_secs: i64,
 }
@@ -207,6 +214,7 @@ mod tests {
             extra_exec_args: vec!["--no-sandbox".into()],
             comment: Some("A foo".into()),
             categories: vec!["Utility".into()],
+            mime_types: vec!["text/plain".into()],
             installed_at_secs: 1_700_000_000,
         };
         s.apps.insert(rec.key(), rec.clone());

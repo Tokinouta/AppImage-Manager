@@ -542,3 +542,57 @@ by hand (move + state re-render + theme cache rebuild).
 so unit tests don't need a network fetch. The CLI was also
 verified against `/tmp/marktext.AppImage` (downloaded from GitHub,
 113 MB).
+
+## Feature: `aim mime add/remove/list/default`
+
+The user's question (xlsx → DesktopEditors as default) needed
+three real mechanisms:
+
+1. The `.desktop` file's `MimeType=` line (read by
+   `update-desktop-database` to build `mimeinfo.cache`).
+2. A way to set the OS default per MIME type (writes
+   `~/.config/mimeapps.list`).
+3. Both wired through `aim` so the user doesn't have to
+   hand-edit `.desktop` files.
+
+Added `mime_types: Vec<String>` to `AppRecord` (with
+`#[serde(default)]` for state migration), taught
+`desktop::render` to emit `MimeType=` when non-empty, and
+added a new `src/mime.rs` with `add`, `remove`, `list`,
+`set_default`. `set_default` deliberately writes
+`mimeapps.list` directly rather than shelling out to
+`xdg-mime default` — `xdg-utils` is not always installed, and
+the file format is portable across all XDG-compliant DEs.
+
+Two bugs caught while implementing:
+
+- `set_default` did not require the install to have already
+  declared the MIME type. Without `add` first, the OS rejects
+  the association as undeclared. Now `set_default` errors with
+  `aim::error::invalid_target` ("does not advertise '<mime>'")
+  if the type isn't in the record.
+- `rebuild_title_cache` was passing
+  `dirs::data_dir().join(".local/share/applications")`,
+  which under default data dir = `~/.local/share` produces
+  `~/.local/share/.local/share/applications` (doubled). Fixed
+  by threading the `Layout` and using
+  `layout.apps_root_dir.join("applications")`.
+
+Tests: 9 new in `mime::tests`. 111 unit + 4 integration
+green total.
+
+End-to-end verified: `DesktopEditors` is now wired up as the
+default for `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+`application/vnd.ms-excel`, and
+`application/vnd.oasis.opendocument.spreadsheet`. Both
+`mimeapps.list` and `mimeinfo.cache` reflect the
+association. `xdg-mime query default` returns
+`aim-DesktopEditors.desktop`.
+
+Known limitation: `aim` doesn't auto-suggest MIME types per
+app — the user has to know that OnlyOffice handles xlsx (and
+not, say, docx with the same `vd.openxmlformats-officedocument`
+prefix). A future polish slice could extract MIME types from
+the AppImage's embedded `.desktop` template (some ship one),
+maintain a curated lookup table for popular apps, or accept
+a `--mimetype` flag on `aim install`.

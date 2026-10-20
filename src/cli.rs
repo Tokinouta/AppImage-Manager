@@ -17,6 +17,7 @@ use crate::gc;
 use crate::gh;
 use crate::install::{self, InstallRequest};
 use crate::integrate;
+use crate::mime;
 use crate::paths::Layout;
 use crate::reinstall;
 use crate::remove;
@@ -70,6 +71,8 @@ pub enum Cmd {
     /// Re-install an AppImage from its surviving cache (after a default
     /// `aim remove`).
     Reinstall(ReinstallArgs),
+    /// Manage MIME-type associations for an installed AppImage.
+    Mime(MimeArgs),
 }
 
 #[derive(Debug, Args)]
@@ -208,6 +211,40 @@ pub struct ReinstallArgs {
     pub no_integrate: bool,
 }
 
+#[derive(Debug, Args)]
+pub struct MimeArgs {
+    #[command(subcommand)]
+    pub action: MimeAction,
+}
+
+#[derive(Debug, Subcommand)]
+enum MimeAction {
+    /// Add MIME types that this install handles.
+    Add {
+        /// The `id` (or `id@version`).
+        target: String,
+        /// One or more MIME types (e.g. `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`).
+        #[arg(required = true)]
+        mime_types: Vec<String>,
+    },
+    /// Remove MIME types from this install's `MimeType=` list.
+    Remove {
+        target: String,
+        #[arg(required = true)]
+        mime_types: Vec<String>,
+    },
+    /// List the MIME types this install handles.
+    List {
+        target: String,
+    },
+    /// Set this install as the OS default for a MIME type.
+    Default {
+        target: String,
+        /// The MIME type to set as default.
+        mime_type: String,
+    },
+}
+
 /// Dispatch the parsed command. Each match arm calls the relevant
 /// op module. Errors propagate via `?` and are formatted as `miette`
 /// reports in `main`.
@@ -272,6 +309,14 @@ pub fn run(cli: Cli) -> Result<()> {
             reinstall::ReinstallOpts { no_integrate: args.no_integrate },
             &layout,
         ),
+        Cmd::Mime(args) => match args.action {
+            MimeAction::Add { target, mime_types } => mime::add(&target, &mime_types, &layout),
+            MimeAction::Remove { target, mime_types } => mime::remove(&target, &mime_types, &layout),
+            MimeAction::List { target } => mime::list(&target, &layout),
+            MimeAction::Default { target, mime_type } => {
+                mime::set_default(&target, &mime_type, &layout)
+            }
+        },
     }
 }
 

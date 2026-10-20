@@ -134,6 +134,7 @@ pub fn run(req: InstallRequest, layout: &Layout) -> Result<InstallResult> {
         extra_exec_args: Vec::new(),
         comment: None,
         categories: Vec::new(),
+        mime_types: Vec::new(),
         installed_at_secs: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)

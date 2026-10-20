@@ -19,6 +19,7 @@ pub mod identity;
 pub mod icon;
 pub mod install;
 pub mod integrate;
+pub mod mime;
 pub mod output;
 pub mod paths;
 pub mod reinstall;

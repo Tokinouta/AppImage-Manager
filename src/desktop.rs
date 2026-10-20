@@ -28,6 +28,15 @@ pub fn render(record: &AppRecord, appimage_path: &Path) -> String {
     if !record.categories.is_empty() {
         let _ = writeln!(out, "Categories={}", record.categories.join(";"));
     }
+    // MimeType= is what `update-desktop-database` reads to build
+    // `mimeinfo.cache`, which is the prerequisite for `xdg-mime`
+    // and file-manager "Open With" to consider this app as a
+    // candidate for a given file type. Empty when the user hasn't
+    // run `aim mime add` — that's correct; the app just won't be
+    // a candidate for any type.
+    if !record.mime_types.is_empty() {
+        let _ = writeln!(out, "MimeType={}", record.mime_types.join(";"));
+    }
 
     let appimage_path_str = appimage_path.to_string_lossy();
     let extra = record.extra_exec_args.join(" ");
@@ -96,6 +105,10 @@ mod tests {
             extra_exec_args: vec!["--no-sandbox".into()],
             comment: Some("A foo app".into()),
             categories: vec!["Utility".into()],
+            mime_types: vec![
+                "text/plain".into(),
+                "application/x-foo".into(),
+            ],
             installed_at_secs: 0,
         }
     }
@@ -109,6 +122,7 @@ mod tests {
         assert!(body.contains("Name=foo"));
         assert!(body.contains("Comment=A foo app"));
         assert!(body.contains("Categories=Utility"));
+        assert!(body.contains("MimeType=text/plain;application/x-foo"));
         assert!(body.contains("Exec=env AIM_INTEGRATED=0 WAYLAND=1 sh -c \"/cache/foo@1.0.0/AppImage\" --no-sandbox"));
         assert!(body.contains("Icon=aim-foo"));
         assert!(body.contains("StartupWMClass=foo"));

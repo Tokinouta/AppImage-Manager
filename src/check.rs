@@ -257,6 +257,7 @@ mod tests {
             extra_exec_args: vec![],
             comment: None,
             categories: vec![],
+            mime_types: vec![],
             installed_at_secs: 0,
         };
         let entry = check_record("foo@1.0.0", &rec);

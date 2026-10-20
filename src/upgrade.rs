@@ -123,6 +123,7 @@ pub fn run(target: &str, layout: &Layout) -> Result<()> {
         extra_exec_args: old_record.extra_exec_args.clone(),
         comment: old_record.comment.clone(),
         categories: old_record.categories.clone(),
+        mime_types: old_record.mime_types.clone(),
         installed_at_secs: now,
     };
 

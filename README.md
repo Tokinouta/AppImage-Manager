@@ -77,6 +77,10 @@ aim gc --yes
 | `aim install <source>` | `source` is a local path, an `http(s)://` URL, or `gh:owner/repo[@ver]`. `--name <ID>` overrides the derived id. `--no-integrate` skips `.desktop` + bin symlink creation. `--force` overwrites an existing install. |
 | `aim remove <id...>` | Drops the state record, integration artefacts, and the icon. The cached AppImage stays so a future `aim install` is fast — that's what "cache preserved" refers to. `--purge` also deletes the cached AppImage. |
 | `aim reinstall <id>` | Re-install from a surviving cache (after a default `aim remove`). Resolves a bare id against `apps/<id>@*/`. Per-app env / args are NOT preserved (they lived in the deleted state record); the new install starts with fresh defaults. |
+| `aim mime add <id> <type>...` | Add MIME types that this install handles. Re-renders `.desktop`, rebuilds the title index. |
+| `aim mime remove <id> <type>...` | Remove MIME types from this install's `MimeType=` list. |
+| `aim mime list <id>` | Show this install's recorded MIME types. |
+| `aim mime default <id> <type>` | Set this install as the OS default for `<type>`. Requires a prior `add`. |
 | `aim list [--integrated-only] [--json]` | Tabular view of all installs. |
 | `aim info <id> [--json]` | Detailed view (sha256, size, paths, source, install time, per-app overrides). `--edit` is recognised but not yet wired. |
 | `aim run <id> [-- <args...>]` | `exec()`s the cached AppImage, forwarding `--` to it. |
