@@ -54,12 +54,20 @@ pub fn render(record: &AppRecord, appimage_path: &Path) -> String {
         .map(|(k, v)| format!("{k}={v}"))
         .collect::<Vec<_>>()
         .join(" ");
-    // Always wrap in `env … sh -c "…"`, even if `render_env` is
-    // empty, so the rendered Exec stays a single `sh -c` argument.
+    // The Exec line must include at least one file placeholder
+    // (`%f`, `%F`, `%u`, `%U`) so the desktop environment can
+    // forward file paths when the user double-clicks a registered
+    // file type. If the user's `extra_exec_args` already contains
+    // a placeholder (uncommon but possible), respect it as-is;
+    // otherwise append `%F` (multiple file paths) at the end.
+    let user_args_already_has_placeholder =
+        extra.contains("%f") || extra.contains("%F") || extra.contains("%u") || extra.contains("%U");
     let shell_exec = if extra.is_empty() {
-        format!("\"{appimage_path_str}\"")
-    } else {
+        format!("\"{appimage_path_str}\" %F")
+    } else if user_args_already_has_placeholder {
         format!("\"{appimage_path_str}\" {extra}")
+    } else {
+        format!("\"{appimage_path_str}\" {extra} %F")
     };
     let _ = writeln!(out, "Exec=env {env_str} sh -c {shell_exec}");
 
@@ -123,7 +131,9 @@ mod tests {
         assert!(body.contains("Comment=A foo app"));
         assert!(body.contains("Categories=Utility"));
         assert!(body.contains("MimeType=text/plain;application/x-foo"));
-        assert!(body.contains("Exec=env AIM_INTEGRATED=0 WAYLAND=1 sh -c \"/cache/foo@1.0.0/AppImage\" --no-sandbox"));
+        // Exec line: extra args + the file placeholder the DE
+        // needs to forward double-clicked files.
+        assert!(body.contains("Exec=env AIM_INTEGRATED=0 WAYLAND=1 sh -c \"/cache/foo@1.0.0/AppImage\" --no-sandbox %F"));
         assert!(body.contains("Icon=aim-foo"));
         assert!(body.contains("StartupWMClass=foo"));
     }
@@ -161,8 +171,9 @@ mod tests {
         let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
         // Even with no envs and no extra args, we always wrap in
         // `env ... sh -c ...` so the layout of the Exec line stays
-        // stable for diffing.
-        assert!(body.contains("Exec=env AIM_INTEGRATED=0 sh -c \"/cache/foo@1.0.0/AppImage\""));
+        // stable for diffing. And we always append `%F` so the DE
+        // forwards double-clicked file paths.
+        assert!(body.contains("Exec=env AIM_INTEGRATED=0 sh -c \"/cache/foo@1.0.0/AppImage\" %F"));
         assert!(!body.contains("Icon="));
         assert!(!body.contains("Comment="));
     }
@@ -178,5 +189,37 @@ mod tests {
         r.integrated = false;
         let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
         assert!(body.contains("Exec=env AIM_INTEGRATED=0"));
+    }
+
+    #[test]
+    fn user_supplied_placeholder_is_preserved() {
+        // If the user's extra_exec_args already contains a
+        // placeholder (`%f`, `%F`, `%u`, `%U`), the renderer must
+        // not append a second `%F` — that would break the user's
+        // intent and double the file list.
+        let mut r = rec();
+        r.env.clear();
+        r.extra_exec_args = vec!["--no-sandbox".into(), "%U".into()];
+        let body = render(&r, Path::new("/cache/foo@1.0.0/AppImage"));
+        assert!(body.contains("--no-sandbox %U"));
+        // Exactly one `%` placeholder (counted naively; the path
+        // itself shouldn't contain one).
+        assert_eq!(body.matches('%').count(), 1);
+    }
+
+    #[test]
+    fn file_placeholder_always_present() {
+        // Regression for the bug where double-clicking an xlsx
+        // launched OnlyOffice without the file path — the Exec
+        // line had no `%f`/`%F`/`%u`/`%U` placeholder. The fix
+        // always appends `%F` unless the user supplied one.
+        let mut r = rec();
+        r.env.clear();
+        r.extra_exec_args.clear();
+        let body = render(&r, Path::new("/cache/foo/AppImage"));
+        assert!(
+            body.contains(" %F"),
+            "Exec line must end with a file-placeholder; got:\n{body}"
+        );
     }
 }

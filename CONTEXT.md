@@ -596,3 +596,33 @@ prefix). A future polish slice could extract MIME types from
 the AppImage's embedded `.desktop` template (some ship one),
 maintain a curated lookup table for popular apps, or accept
 a `--mimetype` flag on `aim install`.
+
+## Bug fix: `Exec=` line dropped file paths
+
+Once MIME associations worked, double-clicking an `.xlsx` did
+open DesktopEditors — but the file wasn't loaded. The `.desktop`
+file's `Exec=` line was just the AppImage path with no file
+placeholder:
+
+```
+Exec=env AIM_INTEGRATED=1 sh -c "/home/mi/.local/share/aim/apps/DesktopEditors/AppImage"
+```
+
+Per the freedesktop Desktop Entry Spec, `Exec=` must include
+at least one of `%f`, `%F`, `%u`, `%U` for the desktop
+environment to forward file paths. Without it, the AppImage
+gets the file-MIME-assoc default and launches, but the path
+is dropped on the floor.
+
+Fix: `desktop::render` now always appends `%F` (multiple file
+paths, most robust default) at the end of the shell command
+unless the user's `extra_exec_args` already contains a
+placeholder — in which case their intent is preserved exactly.
+
+Tests: 2 new (`user_supplied_placeholder_is_preserved`,
+`file_placeholder_always_present`) plus the existing two
+Exec-line assertions updated. 113 unit + 4 integration green.
+
+End-to-end: `aim integrate DesktopEditors` re-renders the
+desktop file; `desktop-file-validate` passes; double-clicking
+an xlsx now forwards the file path.
