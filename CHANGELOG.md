@@ -4,6 +4,17 @@ All notable changes to `aim` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] — 2026-10-20
+
+### Changed
+
+- **License: MIT → `MIT OR Apache-2.0` (dual)**. This is the de-facto
+  Rust ecosystem standard (used by serde, tokio, clap, rustc) and
+  matches what 9 of 10 direct dependencies of `aim` already advertise.
+  Pure-MIT was v0.1.0; the source from v0.1.0 forward is dual-licensed.
+  The published v0.1.0 binary and tag remain MIT-only — that source
+  is locked-in by the published tag and cannot be retro-licensed.
+
 ## [0.1.0] — 2026-10-20
 
 First public release. Manages AppImage install / remove / integrate /

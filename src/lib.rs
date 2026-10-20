@@ -3,6 +3,8 @@
 //! This crate exposes the data model and operations so they can be
 //! consumed by both the CLI binary and integration tests. The subcommand
 //! dispatch lives in [`cli`].
+//!
+//! SPDX-License-Identifier: MIT OR Apache-2.0
 
 pub mod check;
 pub mod cli;

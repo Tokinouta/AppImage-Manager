@@ -1,5 +1,7 @@
 //! Binary entry point. Forwards to the library crate so unit and
 //! integration tests can exercise the same code path.
+//!
+//! SPDX-License-Identifier: MIT OR Apache-2.0
 
 use std::process::ExitCode;
 
