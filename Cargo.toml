@@ -1,6 +1,6 @@
 [package]
 name = "aim"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "AppImage manager: install, remove, integrate, update, gc"
 license = "MIT OR Apache-2.0"

@@ -149,8 +149,16 @@ behind if the OS killed the process between `tempfile_in` and
   REST path also opportunistically reads `gh auth token` to bump
   rate limits; this requires no new config from the user.
 - Asset selection (`pick_appimage`): filter by `.appimage` (case
-  insensitive) extension, take the single candidate, or the
-  largest of multiple. Errors if the release has no AppImage.
+  insensitive) extension, then match the host architecture via
+  filename tokens (`x86_64`/`amd64`/`x64`, `aarch64`/`arm64`,
+  `arm`/`armv7`/`armhf`, `i686`/`i386`/`x86`), largest of the
+  matches. Falls back to unlabeled (no arch token) builds.
+  Errors if the release has no AppImage or only foreign-arch ones.
+  Motivating bug: siyuan v3.8.8's x86_64 and arm64 assets were
+  0.5% apart in size, so the pre-0.2.0 largest-wins rule picked
+  correctly only by luck. `asset_arch`/`host_arch`/
+  `pick_appimage_for` are the testable seams (host arch is a
+  parameter, not ambient).
 - `gh` CLI version drift: gh 2.102+ emits the field as `"url"`,
   older versions as `"browserDownloadUrl"`. Both are accepted via
   `serde(alias = …)`.

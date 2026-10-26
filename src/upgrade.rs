@@ -190,7 +190,6 @@ pub fn run(target: &str, layout: &Layout) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     // No network-using unit tests here — `run` calls
     // `gh::resolve_release` and `download::download`, both of
     // which hit the network. The end-to-end flow is verified

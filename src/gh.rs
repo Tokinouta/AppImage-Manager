@@ -1,6 +1,6 @@
 //! `gh:owner/repo` resolution.
 //!
-//! Two paths to find the AppImage asset URL in a GitHub release:
+//! Two paths to find the `AppImage` asset URL in a GitHub release:
 //! 1. The `gh` CLI, if installed and authenticated — fastest, works
 //!    for private repos, no token management.
 //! 2. The GitHub REST API (`/repos/{owner}/{repo}/releases/latest`),
@@ -32,7 +32,6 @@ pub struct Asset {
 }
 
 /// Parse a `gh:owner/repo` or `gh:owner/repo@version` reference.
-#[must_use]
 pub fn parse(s: &str) -> Result<GhRef> {
     if !s.starts_with("gh:") {
         return Err(Error::InvalidTarget {
@@ -67,38 +66,163 @@ pub fn parse(s: &str) -> Result<GhRef> {
     })
 }
 
-/// Choose the AppImage asset to download. Heuristic:
-/// 1. Filter to assets whose name ends in `.appimage` (case-insensitive).
-/// 2. If exactly one, return it.
-/// 3. If multiple, return the largest by `size_bytes`.
-/// 4. Otherwise error.
+/// CPU-architecture class of a release asset, derived from the
+/// arch tokens projects put in release filenames.
+///
+/// The ordering of the [`ARCH_TOKENS`] table matters: `arm64`
+/// must classify as [`ArchClass::Aarch64`] before the looser
+/// `arm` token can pull it into [`ArchClass::Arm`], and `x86_64`
+/// must win over `x86`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchClass {
+    X86_64,
+    Aarch64,
+    I686,
+    Arm,
+    /// No arch token in the name — the asset is either universal
+    /// or the project didn't label it.
+    Unknown,
+}
+
+impl ArchClass {
+    /// Human/`std::env::consts::ARCH`-style spelling, for error
+    /// messages.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::X86_64 => "x86_64",
+            Self::Aarch64 => "aarch64",
+            Self::I686 => "i686",
+            Self::Arm => "arm",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Filenames tokens per arch class, in classification order.
+/// First matching row wins.
+const ARCH_TOKENS: &[(&str, &[&str])] = &[
+    ("x86_64", &["x86_64", "x86-64", "x64", "amd64"]),
+    ("aarch64", &["aarch64", "arm64"]),
+    ("arm", &["armv7", "armhf", "arm"]),
+    ("i686", &["i686", "i586", "i486", "i386", "x86"]),
+];
+
+/// Classify a release filename's architecture from its tokens.
+/// Case-insensitive substring match; table order resolves the
+/// `arm64`-contains-`arm` and `x86_64`-contains-`x86` traps.
 #[must_use]
+pub fn asset_arch(name: &str) -> ArchClass {
+    let lower = name.to_lowercase();
+    for (class, tokens) in ARCH_TOKENS {
+        if tokens.iter().any(|t| lower.contains(t)) {
+            return match *class {
+                "x86_64" => ArchClass::X86_64,
+                "aarch64" => ArchClass::Aarch64,
+                "arm" => ArchClass::Arm,
+                _ => ArchClass::I686,
+            };
+        }
+    }
+    ArchClass::Unknown
+}
+
+/// The current machine's arch class, from `std::env::consts::ARCH`.
+#[must_use]
+pub fn host_arch() -> ArchClass {
+    match std::env::consts::ARCH {
+        "x86_64" => ArchClass::X86_64,
+        "aarch64" => ArchClass::Aarch64,
+        "x86" => ArchClass::I686,
+        "arm" => ArchClass::Arm,
+        _ => ArchClass::Unknown,
+    }
+}
+
+/// Choose the `AppImage` asset to download, matching the host
+/// architecture. Heuristic, in order:
+///
+/// 1. Filter to assets whose name ends in `.appimage`
+///    (case-insensitive).
+/// 2. Keep those whose filename arch tokens match the host.
+/// 3. Among matches, prefer the largest by `size_bytes` (a weak
+///    proxy for "the full build, not a minimal variant").
+/// 4. If nothing matches the host arch, fall back to assets with
+///    no arch tokens in their name (universal/unlabeled builds).
+/// 5. Otherwise error, listing the candidates.
+///
+/// Rationale (real-world bug this replaces): siyuan v3.8.8 ships
+/// `…-linux.AppImage` (`x86_64`, 279,305,950 B) and
+/// `…-linux-arm64.AppImage` (277,774,998 B) — 0.5% apart. The old
+/// largest-wins picker chose `x86_64` by luck and would happily have
+/// downloaded the `arm64` build had it been marginally bigger.
 pub fn pick_appimage(assets: &[Asset]) -> Result<&Asset> {
+    pick_appimage_for(assets, host_arch())
+}
+
+/// Largest asset in a non-empty pool (weak proxy for "the full
+/// build, not a minimal variant").
+fn largest(pool: Vec<&Asset>) -> &Asset {
+    pool.into_iter()
+        .max_by_key(|a| a.size_bytes)
+        .expect("pool is non-empty")
+}
+
+/// [`pick_appimage`] with an explicit host arch, so tests don't
+/// depend on the machine they run on.
+pub fn pick_appimage_for(assets: &[Asset], host: ArchClass) -> Result<&Asset> {
     let candidates: Vec<&Asset> = assets
         .iter()
         .filter(|a| a.name.to_lowercase().ends_with(".appimage"))
         .collect();
-    match candidates.len() {
-        0 => Err(Error::InvalidTarget {
+
+    let arch_matches = |a: &Asset| asset_arch(&a.name) == host;
+
+    // Prefer arch-labeled matches for this machine…
+    let matching: Vec<&Asset> = candidates.iter().copied().filter(|a| arch_matches(a)).collect();
+    if !matching.is_empty() {
+        return Ok(largest(matching));
+    }
+
+    // …then unlabeled (universal) builds…
+    let unlabeled: Vec<&Asset> = candidates
+        .iter()
+        .copied()
+        .filter(|a| asset_arch(&a.name) == ArchClass::Unknown)
+        .collect();
+    if !unlabeled.is_empty() {
+        return Ok(largest(unlabeled));
+    }
+
+    // …else nothing sensible: either no .AppImage at all, or every
+    // candidate is labeled for a foreign arch (downloading it would
+    // waste hundreds of MB and crash on launch).
+    if candidates.is_empty() {
+        Err(Error::InvalidTarget {
             message: "no .AppImage asset in the latest release".to_string(),
-        }),
-        1 => Ok(candidates[0]),
-        _ => Ok(candidates
-            .into_iter()
-            .max_by_key(|a| a.size_bytes)
-            .expect("candidates is non-empty (just checked len > 1)")),
+        })
+    } else {
+        let names: Vec<&str> = candidates.iter().map(|a| a.name.as_str()).collect();
+        Err(Error::InvalidTarget {
+            message: format!(
+                "no .AppImage asset for this machine's architecture ({}); \
+                 candidates: {}",
+                host.as_str(),
+                names.join(", ")
+            ),
+        })
     }
 }
 
-/// Resolve a `GhRef` to an AppImage asset URL. Tries the `gh` CLI
+/// Resolve a `GhRef` to an `AppImage` asset URL. Tries the `gh` CLI
 /// first, then the GitHub REST API. Returns the first resolvable
-/// release and the chosen AppImage asset.
+/// release and the chosen `AppImage` asset.
 pub fn resolve_release(r: &GhRef) -> Result<(String, Asset)> {
     // Try gh CLI
-    if let Ok((tag, assets)) = try_gh_cli(r) {
-        if let Ok(asset) = pick_appimage(&assets) {
-            return Ok((tag, asset.clone()));
-        }
+    if let Ok((tag, assets)) = try_gh_cli(r)
+        && let Ok(asset) = pick_appimage(&assets)
+    {
+        return Ok((tag, asset.clone()));
     }
     // Fall back to REST
     let (tag, assets) = try_rest(r)?;
@@ -151,7 +275,7 @@ fn try_gh_cli(r: &GhRef) -> Result<(String, Vec<Asset>)> {
         .map(|a| Asset {
             name: a.name,
             url: a.browser_download_url,
-            size_bytes: a.size as u64,
+            size_bytes: a.size,
         })
         .collect();
     Ok((tag, assets))
@@ -319,20 +443,123 @@ mod tests {
 
     #[test]
     fn pick_largest_when_multiple() {
+        // Same arch (x86_64 via different token spellings), so the
+        // largest one wins on size.
         let assets = vec![
-            asset("Foo-i386.AppImage", 1024),
+            asset("Foo-amd64.AppImage", 1024),
             asset("Foo-x86_64.AppImage", 4096),
-            asset("Foo-arm64.AppImage", 2048),
         ];
-        let chosen = pick_appimage(&assets).unwrap();
+        let chosen = pick_appimage_for(&assets, ArchClass::X86_64).unwrap();
         assert_eq!(chosen.name, "Foo-x86_64.AppImage");
+    }
+
+    #[test]
+    fn pick_arch_beats_size() {
+        // The arm64 build is *larger*; an x86_64 host must still
+        // take the x86_64 build. (Old largest-wins picker failed
+        // this whenever the foreign arch happened to ship more
+        // bytes.)
+        let assets = vec![
+            asset("Foo-linux-arm64.AppImage", 5000),
+            asset("Foo-linux-x86_64.AppImage", 4000),
+        ];
+        let chosen = pick_appimage_for(&assets, ArchClass::X86_64).unwrap();
+        assert_eq!(chosen.name, "Foo-linux-x86_64.AppImage");
+    }
+
+    #[test]
+    fn pick_siyuan_v388_real_world() {
+        // Regression for the actual siyuan v3.8.8 release that
+        // motivated arch-aware picking: the x86_64 build is
+        // unlabeled (`siyuan-3.8.8-linux.AppImage`) and only 0.5%
+        // larger than the arm64 one. Sizes here are *inverted* so
+        // only arch logic — not size luck — can pick correctly.
+        let assets = vec![
+            asset("siyuan-3.8.8-linux-arm64.AppImage", 279_305_950),
+            asset("siyuan-3.8.8-linux.AppImage", 277_774_998),
+        ];
+        let chosen = pick_appimage_for(&assets, ArchClass::X86_64).unwrap();
+        assert_eq!(chosen.name, "siyuan-3.8.8-linux.AppImage");
+    }
+
+    #[test]
+    fn pick_prefers_host_labeled_over_unlabeled() {
+        // When the host arch is explicitly labeled, that beats an
+        // unlabeled (possibly foreign) build.
+        let assets = vec![
+            asset("Foo-linux.AppImage", 9000),
+            asset("Foo-linux-x86_64.AppImage", 4000),
+        ];
+        let chosen = pick_appimage_for(&assets, ArchClass::X86_64).unwrap();
+        assert_eq!(chosen.name, "Foo-linux-x86_64.AppImage");
+    }
+
+    #[test]
+    fn pick_aarch64_host_takes_arm64_over_armv7() {
+        let assets = vec![
+            asset("Foo-linux-armv7.AppImage", 9000),
+            asset("Foo-linux-arm64.AppImage", 8000),
+        ];
+        let chosen = pick_appimage_for(&assets, ArchClass::Aarch64).unwrap();
+        assert_eq!(chosen.name, "Foo-linux-arm64.AppImage");
+    }
+
+    #[test]
+    fn pick_foreign_arch_only_errors() {
+        // Every candidate is labeled for a foreign arch: error
+        // instead of downloading the wrong build.
+        let assets = vec![asset("Foo-linux-arm64.AppImage", 5000)];
+        let err = pick_appimage_for(&assets, ArchClass::X86_64).unwrap_err();
+        assert_eq!(err.code(), "aim::error::invalid_target");
+        let msg = err.to_string();
+        assert!(msg.contains("x86_64"), "message should name the host arch: {msg}");
+        assert!(
+            msg.contains("Foo-linux-arm64.AppImage"),
+            "message should list candidates: {msg}"
+        );
+    }
+
+    #[test]
+    fn asset_arch_substring_traps() {
+        // `arm64` contains `arm`; `x86_64` contains `x86`; order
+        // of ARCH_TOKENS must resolve both.
+        assert_eq!(asset_arch("Foo-arm64.AppImage"), ArchClass::Aarch64);
+        assert_eq!(asset_arch("Foo-aarch64.AppImage"), ArchClass::Aarch64);
+        assert_eq!(asset_arch("Foo-armv7.AppImage"), ArchClass::Arm);
+        assert_eq!(asset_arch("Foo-armhf.AppImage"), ArchClass::Arm);
+        assert_eq!(asset_arch("Foo-x86_64.AppImage"), ArchClass::X86_64);
+        assert_eq!(asset_arch("Foo-amd64.AppImage"), ArchClass::X86_64);
+        assert_eq!(asset_arch("Foo-x64.AppImage"), ArchClass::X86_64);
+        assert_eq!(asset_arch("Foo-i386.AppImage"), ArchClass::I686);
+        assert_eq!(asset_arch("Foo.AppImage"), ArchClass::Unknown);
+        assert_eq!(asset_arch("Foo-linux.AppImage"), ArchClass::Unknown);
     }
 
     #[test]
     fn pick_no_appimage_errors() {
         let assets = vec![asset("readme.md", 100), asset("foo.tar.gz", 100)];
-        let err = pick_appimage(&assets).unwrap_err();
+        let err = pick_appimage_for(&assets, ArchClass::X86_64).unwrap_err();
         assert_eq!(err.code(), "aim::error::invalid_target");
+    }
+
+    /// Live check against the real siyuan-note/siyuan latest
+    /// release: the picker must choose an asset that either
+    /// matches the host arch or is unlabeled — never a foreign
+    /// arch. Read-only (release metadata via `gh`); run with
+    /// `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "hits the network via gh CLI"]
+    fn pick_against_live_siyuan_release() {
+        let r = parse("gh:siyuan-note/siyuan").unwrap();
+        let (_tag, assets) = try_gh_cli(&r).expect("gh CLI available and authenticated");
+        let chosen = pick_appimage(&assets).expect("siyuan ships AppImage assets");
+        let class = asset_arch(&chosen.name);
+        let host = host_arch();
+        assert!(
+            class == host || class == ArchClass::Unknown,
+            "picked {} ({class:?}) on a {host:?} host",
+            chosen.name
+        );
     }
 
     #[test]

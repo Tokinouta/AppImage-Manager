@@ -230,10 +230,6 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn from_mode(m: u32) -> std::fs::Permissions {
-        std::fs::Permissions::from_mode(m)
-    }
-
     fn fresh_tmp() -> std::path::PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

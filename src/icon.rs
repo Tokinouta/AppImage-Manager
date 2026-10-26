@@ -203,7 +203,6 @@ fn find_pngs(root: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paths;
 
     fn touch(path: &Path, body: &[u8]) {
         if let Some(parent) = path.parent() {

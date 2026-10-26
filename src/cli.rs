@@ -218,7 +218,7 @@ pub struct MimeArgs {
 }
 
 #[derive(Debug, Subcommand)]
-enum MimeAction {
+pub enum MimeAction {
     /// Add MIME types that this install handles.
     Add {
         /// The `id` (or `id@version`).

@@ -4,6 +4,27 @@ All notable changes to `aim` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-10-26
+
+### Fixed
+
+- **`gh:` installs now pick release assets by CPU architecture,
+  not by size.** Previously, when a release shipped multiple
+  AppImages, `aim` downloaded the largest — pure luck on
+  multi-arch releases. (Real case: siyuan v3.8.8's `x86_64` and
+  `arm64` builds are 0.5% apart; whichever happened to be bigger
+  won.) The picker now classifies each asset from its filename
+  tokens (`x86_64`/`amd64`/`x64`, `aarch64`/`arm64`,
+  `arm`/`armv7`/`armhf`, `i686`/`i386`/`x86`), prefers the
+  host-arch match, falls back to unlabeled builds, and errors —
+  listing the candidates — when only foreign-arch AppImages
+  exist, instead of downloading an unbootable one.
+
+### Changed
+
+- CLI: `aim mime`'s subcommand enum is now `pub` (fixes a
+  `private_interfaces` warning); no behaviour change.
+
 ## [0.1.1] — 2026-10-20
 
 ### Changed

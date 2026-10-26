@@ -132,10 +132,13 @@ present; otherwise parsed from the filename (`1.0.0`,
    fallback. Borrows `gh auth token` opportunistically to bump
    rate limits.
 
-Asset selection is `pick_appimage`: filter by `.appimage`
-(case-insensitive); take the single candidate, or the largest of
-multiple. Errors with `aim::error::invalid_target` if no
-AppImage is in the release.
+Asset selection is `pick_appimage`, and it is architecture-aware:
+filter by `.appimage` (case-insensitive), then prefer assets whose
+filename matches the host arch (`x86_64`/`amd64`/`x64`,
+`aarch64`/`arm64`, `arm`/`armv7`/`armhf`, `i686`/`i386`/`x86`),
+taking the largest if several match. Falls back to unlabeled
+(no arch token) builds; errors with `aim::error::invalid_target`
+if only foreign-arch or no AppImages are in the release.
 
 ## Error codes
 
